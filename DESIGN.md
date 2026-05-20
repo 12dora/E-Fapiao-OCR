@@ -270,7 +270,7 @@ GET /v1/capabilities     # 返回当前支持的 format / invoice_type 列表
 | 文件大小上限 | 10 MB |
 | 日志 | 仅记录 request_id / 类型 / 耗时 / 是否成功，不记录发票内容 |
 | 安全 | 全程内存处理，处理完释放，不落盘 |
-| 鉴权 | API Key（Header `X-API-Key`），一期支持单一静态 key 即可 |
+| 鉴权 | API Key（Header `X-API-Key`），**可选**：未设置环境变量时关闭鉴权（本机集成默认）；设置后强制校验 |
 
 ---
 
@@ -317,7 +317,66 @@ E-Fapiao-OCR/
 
 ---
 
-## 12. 风险与对策
+## 12. 部署形态（2026-05-20 补充）
+
+本服务面向**本机集成**场景。提供三种等价形态，共享同一套 pipeline：
+
+```
+                ┌──────────────────────────────────────────────┐
+                │           核心 pipeline（无状态）              │
+                │  detect → parse → version_adapter → normalize │
+                └──────────────────────────────────────────────┘
+                                ▲           ▲           ▲
+                                │           │           │
+                       ┌────────┴───┐  ┌────┴────┐  ┌──┴─────────┐
+                       │  HTTP 服务   │  │  CLI 进程 │  │ Python 库   │
+                       │ app.main:app │  │ app.cli  │  │ app.sdk    │
+                       └──────────────┘  └─────────┘  └────────────┘
+                            ▲                ▲              ▲
+                            │                │              │
+                       任意语言通过      任意宿主语言       Python 宿主
+                       HTTP localhost    fork CLI 进程     直接 import
+```
+
+| 形态 | 适用场景 | 通信方式 | 进入点 |
+|---|---|---|---|
+| **库 (in-process)** | Python 宿主程序集成，零进程开销 | 函数调用 | `from app.sdk import parse_invoice` |
+| **CLI** | 任意语言 / 二进制宿主集成 | 子进程 + stdin/stdout/exit code | `efapiao parse <file>` |
+| **HTTP 服务** | 跨进程 / 跨主机 / 多语言客户端 | HTTP/JSON | `uvicorn app.main:app` 或 `efapiao serve` |
+
+**关键设计点**：
+
+- 三种形态共享 `app.sdk.parse_invoice()` 作为唯一业务入口，避免分叉。
+- HTTP 层只是 sdk 之上的薄壳：负责协议转换、参数校验、异常→HTTP code 映射。
+- CLI 层同样是 sdk 之上的薄壳：负责 stdin/argv 读取、JSON 输出、异常→退出码映射。
+- 默认监听 `127.0.0.1`（仅本机），需要对外服务时显式设 `EFAPIAO_HOST=0.0.0.0`。
+- 鉴权（API Key）默认关闭，本机集成场景无需配。需要时设 `EFAPIAO_API_KEY=<value>` 即启用。
+- 单容器 Docker 仍然支持，但定位是"可选的分发方式"而非"唯一形态"。
+
+**集成示例**：
+
+```python
+# 形态一：库
+from app.sdk import parse_invoice
+with open("invoice.pdf", "rb") as f:
+    data = parse_invoice(f.read())
+```
+
+```bash
+# 形态二：CLI（适合 Go / Rust / Node / shell 宿主）
+efapiao parse invoice.pdf | jq .data.invoice_number
+cat invoice.pdf | efapiao parse - --pretty
+```
+
+```bash
+# 形态三：HTTP 服务（适合任意 HTTP 客户端）
+efapiao serve --host 127.0.0.1 --port 8000 &
+curl -F "file=@invoice.pdf" http://127.0.0.1:8000/v1/invoices/parse
+```
+
+---
+
+## 13. 风险与对策
 
 | 风险 | 对策 |
 |---|---|

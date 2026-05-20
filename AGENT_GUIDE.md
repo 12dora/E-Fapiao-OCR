@@ -46,12 +46,15 @@
 
 | 边界 | 契约 |
 |---|---|
+| **唯一业务入口** | `app.sdk.parse_invoice(bytes, hint_type) -> dict`。HTTP 路由层和 CLI 层都只是它的薄壳，**严禁绕过 sdk 直接调 parser** |
 | Parser 层 | 所有 Parser 实现 `app.parsers.base.Parser.parse(bytes) -> dict`，**不许**直接返回归一化后的对象 |
 | Extractor 层 | 输出**未归一化**的 RawInvoice dict；归一化是 Normalizer 的职责 |
 | Normalizer | 唯一负责金额字符串化、日期 ISO 化、缺字段补 null |
 | API 响应 | 严格遵循 DESIGN.md §6 的字段与命名；**缺字段补 null，不省略键** |
+| 异常 | 业务异常必须用 `app.errors` 中的类型；HTTP 与 CLI 层做统一映射（§5.4 / app.errors 注释） |
 | 无状态 | 任何模块都不允许引入进程外状态（缓存、会话、计数器除外仅限内存且非业务） |
 | 不落盘 | 上传内容只在内存里流转，处理完释放 |
+| 三种形态等价 | 库 / CLI / HTTP 三条入口必须返回等价结果，添加新能力时三者一起加（DESIGN.md §12） |
 
 新加模块前，先问自己：**这个能力放进哪个已有层？** 答不出来再考虑新建。
 
@@ -129,6 +132,8 @@
 - 不要给 schema 加"业务方可能用得到"的字段 —— DESIGN.md §6 是契约，加字段=改契约=要审。
 - 不要在没读 DESIGN.md §6 的情况下写归一化逻辑。
 - 不要"顺手"重构无关代码。
+- 不要把 `docs/sample/` 下的真发票内容拷进代码、注释、commit message、issue、截图、日志。**那是真实税号 / 姓名**。
+- 不要在 HTTP 路由或 CLI 命令里复制 parser 调用链 —— 唯一入口是 `app.sdk.parse_invoice`。
 
 ---
 

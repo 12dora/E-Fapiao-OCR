@@ -46,7 +46,11 @@ htmlcov/
 # Docker
 *.log
 
-# 发票样本（含敏感数据），仅本地保留
+# 发票样本（含真实税号/姓名/抬头等敏感数据），仅本地保留
+# 开发期样本：docs/sample/  （用户存放真实发票，详见 DESIGN.md §9）
+docs/sample/*
+!docs/sample/README.md
+# 测试期样本：tests/fixtures/（脱敏样本可入库，原始样本同样不入库）
 tests/fixtures/*.pdf
 tests/fixtures/*.ofd
 tests/fixtures/*.jpg
