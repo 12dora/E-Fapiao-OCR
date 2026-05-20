@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual env
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Local config
+.env
+.env.local
+
+# Docker
+*.log
+
+# 发票样本（含敏感数据），仅本地保留
+tests/fixtures/*.pdf
+tests/fixtures/*.ofd
+tests/fixtures/*.jpg
+tests/fixtures/*.png
+!tests/fixtures/.gitkeep
