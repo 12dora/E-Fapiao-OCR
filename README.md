@@ -239,7 +239,7 @@ curl -H "X-API-Key: your-key" \
 
 ```bash
 pip install -e ".[build-bin]"
-python scripts/build_binary.py --version v0.1.1
+python scripts/build_binary.py --version v0.1.2
 ```
 
 产物位于 `dist/`：
@@ -252,8 +252,8 @@ efapiao-<semver>-windows-x86_64.zip
 GitHub Release 由 SemVer tag 触发：
 
 ```bash
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.1.2
+git push origin v0.1.2
 ```
 
 默认发布 `linux-x86_64`、`linux-arm64`、`darwin-arm64`、`windows-x86_64`，并生成 `SHA256SUMS`。
