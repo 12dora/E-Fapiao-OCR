@@ -52,3 +52,21 @@ def test_cli_capabilities_includes_parse_modes(capsys) -> None:
     out = json.loads(capsys.readouterr().out)
     assert "ocr_mode" in out["parse_modes"]
     assert out["formats"]["pdf"] == "supported"
+
+
+def test_cli_configures_stdio_to_utf8(monkeypatch) -> None:
+    calls = []
+
+    class FakeStream:
+        def reconfigure(self, **kwargs):
+            calls.append(kwargs)
+
+    monkeypatch.setattr(cli.sys, "stdout", FakeStream())
+    monkeypatch.setattr(cli.sys, "stderr", FakeStream())
+
+    cli._configure_stdio()
+
+    assert calls == [
+        {"encoding": "utf-8", "errors": "replace"},
+        {"encoding": "utf-8", "errors": "replace"},
+    ]
