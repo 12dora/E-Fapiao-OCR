@@ -18,7 +18,40 @@ import sys
 from pathlib import Path
 
 from app import __version__
-from app.errors import InvalidInput, ParseFailed, UnsupportedFormat
+from app.config import settings
+from app.errors import InvalidInput, ParseFailed, RuleEngineUnhandled, UnsupportedFormat
+
+
+def _print_error(
+    code: str,
+    message: str,
+    *,
+    ocr_mode: str = "auto",
+    ocr_required: bool = False,
+    ocr_used: bool = False,
+    ocr_vendor: str | None = None,
+    document_type: str | None = None,
+    invoice_type: str | None = None,
+) -> None:
+    print(
+        json.dumps(
+            {
+                "status": "error",
+                "code": code,
+                "message": message,
+                "document_type": document_type,
+                "invoice_type": invoice_type,
+                "engine": _engine_status(
+                    ocr_mode,
+                    ocr_required=ocr_required,
+                    ocr_used=ocr_used,
+                    ocr_vendor=ocr_vendor,
+                ),
+            },
+            ensure_ascii=False,
+        ),
+        file=sys.stderr,
+    )
 
 
 def _cmd_parse(args: argparse.Namespace) -> int:
@@ -34,22 +67,52 @@ def _cmd_parse(args: argparse.Namespace) -> int:
         content = path.read_bytes()
 
     try:
-        result = parse_invoice(content, hint_type=args.hint)
+        result = parse_invoice(content, hint_type=args.hint, ocr_mode=args.ocr_mode)
     except InvalidInput as e:
-        print(json.dumps({"status": "error", "code": "invalid_input", "message": str(e)}), file=sys.stderr)
+        _print_error("invalid_input", str(e), ocr_mode=args.ocr_mode)
         return 2
     except UnsupportedFormat as e:
-        print(json.dumps({"status": "error", "code": "unsupported_format", "message": str(e)}), file=sys.stderr)
+        _print_error("unsupported_format", str(e), ocr_mode=args.ocr_mode)
         return 3
+    except RuleEngineUnhandled as e:
+        _print_error(
+            "rule_unhandled",
+            str(e),
+            ocr_mode=args.ocr_mode,
+            ocr_required=e.ocr_required,
+            ocr_used=e.ocr_used,
+            document_type=e.document_type,
+            invoice_type=e.invoice_type,
+        )
+        return 4
     except ParseFailed as e:
-        print(json.dumps({"status": "error", "code": "parse_failed", "message": str(e)}), file=sys.stderr)
+        _print_error("parse_failed", str(e), ocr_mode=args.ocr_mode)
         return 4
     except NotImplementedError as e:
-        print(json.dumps({"status": "error", "code": "not_implemented", "message": str(e)}), file=sys.stderr)
+        _print_error(
+            "not_implemented",
+            str(e),
+            ocr_mode=args.ocr_mode,
+            ocr_required=True,
+        )
         return 5
 
     indent = 2 if args.pretty else None
-    print(json.dumps({"status": "ok", "data": result}, ensure_ascii=False, indent=indent))
+    print(
+        json.dumps(
+            {
+                "status": "ok",
+                "data": result,
+                "engine": _engine_status(
+                    args.ocr_mode,
+                    ocr_used=result.get("source", {}).get("extracted_by") == "ocr",
+                    ocr_vendor=result.get("source", {}).get("ocr_vendor"),
+                ),
+            },
+            ensure_ascii=False,
+            indent=indent,
+        )
+    )
     return 0
 
 
@@ -68,17 +131,28 @@ def _cmd_serve(args: argparse.Namespace) -> int:
 
 
 def _cmd_capabilities(_: argparse.Namespace) -> int:
-    payload = {
-        "version": __version__,
-        "formats": {
-            "pdf": "supported",
-            "ofd": "not_implemented",
-            "image": "not_implemented",
-        },
-        "invoice_types": ["digital_general", "digital_special", "rail_12306"],
-    }
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    from app.config import settings
+    from app.core.capabilities import build_capabilities
+
+    print(json.dumps(build_capabilities(settings), ensure_ascii=False, indent=2))
     return 0
+
+
+def _engine_status(
+    ocr_mode: str,
+    *,
+    ocr_required: bool = False,
+    ocr_used: bool = False,
+    ocr_vendor: str | None = None,
+) -> dict[str, object]:
+    return {
+        "rule_engine": "attempted",
+        "ocr_mode": ocr_mode,
+        "ocr_enabled": settings.image_ocr_enabled,
+        "ocr_used": ocr_used,
+        "ocr_required": ocr_required,
+        "ocr_vendor": ocr_vendor,
+    }
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -89,6 +163,15 @@ def build_parser() -> argparse.ArgumentParser:
     parse_p = sub.add_parser("parse", help="解析单个发票文件，JSON 输出到 stdout")
     parse_p.add_argument("file", help="发票文件路径，使用 - 从 stdin 读取")
     parse_p.add_argument("--hint", choices=["pdf", "ofd", "image", "auto"], default="auto")
+    parse_p.add_argument(
+        "--ocr-mode",
+        choices=["auto", "disabled", "required"],
+        default="auto",
+        help=(
+            "OCR 使用策略：auto 使用已配置 vendor，disabled 仅用规则引擎，"
+            "required 要求可走 OCR 的路径必须启用 OCR"
+        ),
+    )
     parse_p.add_argument("--pretty", action="store_true", help="美化 JSON 输出")
     parse_p.set_defaults(func=_cmd_parse)
 

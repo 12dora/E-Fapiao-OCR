@@ -28,6 +28,9 @@ dev = [
     "ruff>=0.3.0",
     "mypy>=1.9.0",
 ]
+ocr-cnocr = [
+    "cnocr[ort-cpu]>=2.3.1",
+]
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

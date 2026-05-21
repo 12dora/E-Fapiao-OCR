@@ -1,6 +1,6 @@
 """Parser 抽象基类。
 
-所有具体 Parser 必须实现 parse(content) -> RawInvoice。
+所有具体 Parser 必须实现 parse(content, ocr_mode=...) -> RawInvoice。
 RawInvoice 是中间表示，字段不要求归一化，由 Normalizer 统一处理。
 """
 
@@ -10,11 +10,11 @@ from typing import Any
 
 class Parser(ABC):
     @abstractmethod
-    def parse(self, content: bytes) -> dict[str, Any]:
+    def parse(self, content: bytes, *, ocr_mode: str = "auto") -> dict[str, Any]:
         """返回未归一化的 RawInvoice dict。
 
         必须填充：
-          - invoice_type: digital_general | digital_special | rail_12306
+          - invoice_type: digital_general | digital_special | rail_12306 | air_itinerary
           - source.extracted_by: text_layer | qrcode | ocr
           - 其它已抽取到的原始字段
         """

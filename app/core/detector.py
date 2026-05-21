@@ -30,7 +30,12 @@ def detect(content: bytes, filename_hint: str | None = None) -> FileFormat:
     if head.startswith(_PDF):
         return "pdf"
 
-    if head.startswith(_JPEG) or head.startswith(_PNG) or head.startswith(_GIF87) or head.startswith(_GIF89):
+    if (
+        head.startswith(_JPEG)
+        or head.startswith(_PNG)
+        or head.startswith(_GIF87)
+        or head.startswith(_GIF89)
+    ):
         return "image"
 
     if head.startswith(_ZIP):

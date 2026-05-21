@@ -43,6 +43,9 @@ htmlcov/
 .env
 .env.local
 
+# 临时凭据（API 密钥、云厂商 Secret 等），仅本机调试使用，严禁入库
+credentials/
+
 # Docker
 *.log
 

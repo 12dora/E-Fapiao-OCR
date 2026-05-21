@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.config import settings
 from app.core import detector, normalizer
 from app.errors import InvalidInput, UnsupportedFormat
 from app.parsers.base import Parser
@@ -24,7 +25,12 @@ _PARSERS: dict[str, type[Parser]] = {
 }
 
 
-def parse_invoice(content: bytes, hint_type: str | None = None) -> dict[str, Any]:
+def parse_invoice(
+    content: bytes,
+    hint_type: str | None = None,
+    *,
+    ocr_mode: str = "auto",
+) -> dict[str, Any]:
     """把发票字节流解析为 DESIGN.md §6 定义的统一 JSON dict。
 
     异常:
@@ -35,13 +41,17 @@ def parse_invoice(content: bytes, hint_type: str | None = None) -> dict[str, Any
     """
     if not content:
         raise InvalidInput("文件内容为空")
+    if ocr_mode not in {"auto", "disabled", "required"}:
+        raise InvalidInput("ocr_mode 非法，应为 auto / disabled / required")
 
     detected = detect_format(content, hint_type)
+    if detected == "image" and ocr_mode == "required" and not settings.image_ocr_enabled:
+        raise NotImplementedError("本次调用要求启用 OCR，但当前未配置 OCR vendor")
     parser_cls = _PARSERS.get(detected)
     if parser_cls is None:
         raise UnsupportedFormat(f"不支持的文件格式: {detected}")
 
-    raw = parser_cls().parse(content)
+    raw = parser_cls().parse(content, ocr_mode=ocr_mode)
     raw.setdefault("source", {})["format"] = detected
     return normalizer.normalize(raw)
 
