@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import platform
 import shutil
 import subprocess
@@ -29,8 +30,6 @@ PYINSTALLER_EXCLUDES = [
     "python_socks",
     "socksio",
     "trio",
-    "uvicorn.protocols.websockets",
-    "uvicorn.supervisors",
     "uvicorn.workers",
     "watchfiles",
     "websockets",
@@ -112,6 +111,10 @@ def main() -> int:
         str(BUILD / "pyinstaller"),
         "--specpath",
         str(BUILD / "pyinstaller"),
+        "--add-data",
+        f"{ROOT / 'pyproject.toml'}{os.pathsep}.",
+        "--hidden-import",
+        "app.main",
     ]
     for module in PYINSTALLER_EXCLUDES:
         cmd.extend(["--exclude-module", module])
