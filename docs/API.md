@@ -209,3 +209,29 @@ curl -H "X-API-Key: your-key" -F "file=@invoice.pdf" \
 ```
 
 未设置 `EFAPIAO_API_KEY` 时不校验该 header。
+
+## 7. Release 二进制
+
+发布二进制遵循 SemVer tag 规则：
+
+- 稳定版：`vMAJOR.MINOR.PATCH`，例如 `v0.1.0`
+- 预发布：`vMAJOR.MINOR.PATCH-rc.N`，例如 `v0.2.0-rc.1`
+
+GitHub Release 资产命名：
+
+| 平台 | 资产名 |
+|---|---|
+| Linux x86_64 | `efapiao-<version>-linux-x86_64.tar.gz` |
+| Linux arm64 | `efapiao-<version>-linux-arm64.tar.gz` |
+| macOS x86_64 | `efapiao-<version>-darwin-x86_64.tar.gz` |
+| macOS arm64 | `efapiao-<version>-darwin-arm64.tar.gz` |
+| Windows x86_64 | `efapiao-<version>-windows-x86_64.zip` |
+
+二进制提供与 CLI 相同的命令：
+
+```bash
+efapiao --version
+efapiao capabilities
+efapiao parse invoice.pdf --pretty
+efapiao serve --host 127.0.0.1 --port 8000
+```

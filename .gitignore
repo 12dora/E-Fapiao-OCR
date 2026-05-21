@@ -39,6 +39,10 @@ ENV/
 htmlcov/
 .tox/
 
+# Build artifacts
+build/
+dist/
+
 # Local config
 .env
 .env.local

@@ -69,6 +69,7 @@
 | 配置 | `app/config.py` | ✅ 已完成 | 鉴权可选 / host / port 等环境变量 |
 | 测试 | `tests/` | ✅ 65 通过 / 0 skip | 单元 + 脱敏合成 PDF/OFD 集成 + HTTP/CLI 端到端 + OCR vendor + QR fallback + URL 安全 |
 | Docker | `Dockerfile` / `.dockerignore` | ✅ 已完成 | 含 libzbar0 系统依赖 |
+| Release 二进制 | `.github/workflows/release.yml` / `scripts/build_binary.py` | ✅ 已接入 | PyInstaller 本地构建 + GitHub Actions 多平台 Release |
 | 文档 | `DESIGN.md` / `README.md` / `AGENT_GUIDE.md` | ✅ 已完成 | DESIGN.md §12 已加部署形态 |
 | 开发样本 | `docs/sample/*.pdf` (本地) | ✅ 已整理 | 普票 ×22 / 专票 ×6 / 12306 ×12；含腾讯 OCR raw/compare report。**已 .gitignore，禁止入库** |
 | 行程单样本 | `docs/sample/Itinerary/*.ofd` (本地) | ✅ 已就绪 | 航空运输电子客票行程单 ×4。**已 .gitignore，禁止入库** |
@@ -91,6 +92,8 @@
 ## 已完成（按日期倒序）
 
 ### 2026-05-21（M2 继续）
+- 新增多平台二进制发布能力：本地 `scripts/build_binary.py` 可构建当前平台单文件二进制；GitHub Actions 在 SemVer tag 上构建 linux-x86_64 / linux-arm64 / darwin-x86_64 / darwin-arm64 / windows-x86_64 并发布到 GitHub Release
+- Release 产物命名统一为 `efapiao-<version>-<os>-<arch>.tar.gz` 或 Windows `.zip`，并生成 `SHA256SUMS`
 - 测试套件全面改为脱敏合成数据源：移除 `tests/` 对 `docs/sample` 真实发票/OFD 的读取依赖，新增 `tests/fixtures/sanitized.py` 统一生成脱敏文本和最小 OFD 容器
 - 新增 CLI 回归测试、HTTP 鉴权/文件大小契约测试、OFD magic bytes 检测测试，以及测试套件策略测试，防止未来重新依赖 `docs/sample`
 - 脱敏集成覆盖数电普票、免税普票、跨行合计专票、bare-token 专票、12306 客票、OFD 航空行程单、OFD 发票识别不解析等关键分支
