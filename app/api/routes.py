@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from typing import Annotated
+from typing import Annotated, Any, NoReturn, cast
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 
@@ -19,10 +19,14 @@ from app.api.schemas import (
     BatchParseItem,
     BatchParseResponse,
     CapabilitiesResponse,
+    DocumentType,
     EngineStatus,
+    ErrorCode,
     ErrorResponse,
     HealthResponse,
     InvoiceData,
+    InvoiceType,
+    OcrMode,
     ParseResponse,
 )
 from app.config import settings
@@ -145,13 +149,13 @@ async def parse_batch(
         try:
             content = await _read_upload(file, request_id)
         except HTTPException as e:
-            detail = e.detail if isinstance(e.detail, dict) else {}
+            detail: dict[str, Any] = e.detail if isinstance(e.detail, dict) else {}
             items.append(
                 BatchParseItem(
                     index=index,
                     filename=file.filename,
                     status="error",
-                    code=detail.get("code") or "invalid_input",
+                    code=cast(ErrorCode, detail.get("code") or "invalid_input"),
                     message=detail.get("message") or "文件读取失败",
                     engine=_engine_status(ocr_mode),
                     elapsed_ms=int((time.perf_counter() - item_start) * 1000),
@@ -222,12 +226,13 @@ def _parse_content(
             str(e),
             ocr_mode,
             start,
-            document_type=e.document_type,
-            invoice_type=e.invoice_type,
+            document_type=cast(DocumentType | None, e.document_type),
+            invoice_type=cast(InvoiceType | None, e.invoice_type),
             engine=_engine_status(
                 ocr_mode,
                 ocr_required=e.ocr_required,
                 ocr_used=e.ocr_used,
+                ocr_vendor=_configured_ocr_vendor(),
             ),
         )
     except ParseFailed as e:
@@ -240,8 +245,8 @@ def _parse_content(
             str(e) or "该格式暂未实装",
             ocr_mode,
             start,
-            document_type=e.document_type,
-            invoice_type=e.invoice_type,
+            document_type=cast(DocumentType, e.document_type),
+            invoice_type=cast(InvoiceType | None, e.invoice_type),
             engine=_engine_status(ocr_mode),
         )
     except NotImplementedError as e:
@@ -288,13 +293,13 @@ def _parse_content(
 def _error_item(
     index: int,
     filename: str | None,
-    code: str,
+    code: ErrorCode,
     message: str,
     ocr_mode: str,
     start: float,
     *,
-    document_type: str | None = None,
-    invoice_type: str | None = None,
+    document_type: DocumentType | None = None,
+    invoice_type: InvoiceType | None = None,
     engine: EngineStatus | None = None,
 ) -> BatchParseItem:
     return BatchParseItem(
@@ -313,13 +318,13 @@ def _error_item(
 def _raise(
     status: int,
     request_id: str,
-    code: str,
+    code: ErrorCode,
     message: str,
     *,
-    document_type: str | None = None,
-    invoice_type: str | None = None,
+    document_type: DocumentType | None = None,
+    invoice_type: InvoiceType | None = None,
     engine: EngineStatus | None = None,
-    ) -> None:
+) -> NoReturn:
     raise HTTPException(
         status_code=status,
         detail={
@@ -353,11 +358,21 @@ def _engine_status(
     ocr_used: bool = False,
     ocr_vendor: str | None = None,
 ) -> EngineStatus:
+    mode: OcrMode = (
+        cast(OcrMode, ocr_mode) if ocr_mode in {"auto", "disabled", "required"} else "auto"
+    )
     return EngineStatus(
         rule_engine="attempted",
-        ocr_mode=ocr_mode if ocr_mode in {"auto", "disabled", "required"} else "auto",
+        ocr_mode=mode,
         ocr_enabled=settings.image_ocr_enabled,
         ocr_used=ocr_used,
         ocr_required=ocr_required,
         ocr_vendor=ocr_vendor,
     )
+
+
+def _configured_ocr_vendor() -> str | None:
+    vendor = settings.ocr_vendor.lower()
+    if vendor in {"", "none", "disabled"}:
+        return None
+    return settings.ocr_vendor

@@ -14,6 +14,14 @@ def test_png_magic():
     assert detect(b"\x89PNG\r\n\x1a\nfoo") == "image"
 
 
+def test_webp_magic():
+    assert detect(b"RIFF\x1a\x00\x00\x00WEBPVP8 ") == "image"
+
+
+def test_bmp_magic():
+    assert detect(b"BM\x1a\x00\x00\x00\x00\x00\x00\x00") == "image"
+
+
 def test_ofd_zip_magic_and_ofd_xml():
     assert detect(make_ofd_air_itinerary()) == "ofd"
 

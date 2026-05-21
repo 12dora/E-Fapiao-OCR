@@ -2,7 +2,7 @@
 
 PDF:   b"%PDF-"
 OFD:   ZIP 容器（PK\x03\x04）+ 内含 OFD.xml 条目
-IMAGE: JPEG (FF D8 FF) / PNG (89 50 4E 47 0D 0A 1A 0A) / GIF / WEBP
+IMAGE: JPEG (FF D8 FF) / PNG (89 50 4E 47 0D 0A 1A 0A) / GIF / WEBP / BMP
 """
 
 from __future__ import annotations
@@ -17,6 +17,9 @@ _JPEG = b"\xff\xd8\xff"
 _PNG = b"\x89PNG\r\n\x1a\n"
 _GIF87 = b"GIF87a"
 _GIF89 = b"GIF89a"
+_RIFF = b"RIFF"
+_WEBP = b"WEBP"
+_BMP = b"BM"
 _ZIP = b"PK\x03\x04"
 _PDF = b"%PDF-"
 
@@ -35,6 +38,8 @@ def detect(content: bytes, filename_hint: str | None = None) -> FileFormat:
         or head.startswith(_PNG)
         or head.startswith(_GIF87)
         or head.startswith(_GIF89)
+        or (head.startswith(_RIFF) and head[8:12] == _WEBP)
+        or head.startswith(_BMP)
     ):
         return "image"
 

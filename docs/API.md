@@ -9,6 +9,7 @@
 |---|---|---|---|
 | PDF 数电普票 | `pdf-fapiao` | `digital_general` | 支持 |
 | PDF 数电专票 | `pdf-fapiao` | `digital_special` | 支持 |
+| PDF 旧版增值税普通发票 | `pdf-fapiao` | `digital_general` | 尽力支持 |
 | PDF 铁路电子客票 | `pdf-rail-12306` | `rail_12306` | 支持 |
 | OFD 航空运输电子客票行程单 | `ofd-air-itinerary` | `air_itinerary` | 支持 |
 | 图片航空运输电子客票行程单 | `image-air-itinerary` | `air_itinerary` | 需配置 OCR vendor |
@@ -16,6 +17,12 @@
 | 图片发票 | `image-fapiao` | `digital_general` / `digital_special` | 需配置 OCR vendor |
 
 默认不配置 OCR 时，PDF 文本层、PDF 二维码、OFD XML/TextCode 均可由规则引擎解析。
+图片输入通过 magic bytes 识别 JPEG、PNG、GIF、WEBP 和 BMP。
+
+PDF 文本层为空、明显乱码、版式未覆盖或疑似发票但无法判定细分类型时，服务会返回
+`422 rule_unhandled`。这类响应会尽量带上 `document_type=pdf-fapiao`、
+`engine.ocr_required=true`、`engine.ocr_enabled` 和 `engine.ocr_vendor`，便于下游判断是进入
+OCR 队列、人工核对队列，还是先补齐 OCR 服务配置。
 
 ## 2. OCR 策略
 
@@ -24,7 +31,7 @@
 | 值 | 行为 |
 |---|---|
 | `auto` | 默认。先用规则引擎；图片或需 OCR 的路径在 vendor 已配置时使用 OCR。 |
-| `disabled` | 纯规则模式。不调用本地或在线 OCR。规则无法处理时返回 `rule_unhandled`。 |
+| `disabled` | 纯规则模式。不调用本地或在线 OCR。规则无法处理或需要 OCR 时返回 `rule_unhandled`。 |
 | `required` | 图片输入要求 OCR；未配置 OCR vendor 时返回 `501 not_implemented`。 |
 
 OCR vendor 由环境变量 `EFAPIAO_OCR_VENDOR` 配置，可选 `none` / `cnocr` / `http` /
@@ -214,8 +221,8 @@ FastAPI 返回时错误体位于 `detail`：
     "request_id": "uuid",
     "status": "error",
     "code": "rule_unhandled",
-    "message": "规则引擎无法解析该 PDF：文本层内容过少且未找到二维码；当前未配置 OCR vendor",
-    "document_type": null,
+    "message": "规则引擎无法解析该 PDF：文本层不可用或版式未覆盖且未找到二维码；当前未配置 OCR vendor",
+    "document_type": "pdf-fapiao",
     "invoice_type": null,
     "engine": {
       "rule_engine": "attempted",
@@ -235,7 +242,7 @@ FastAPI 返回时错误体位于 `detail`：
 |---|---|---|---|
 | 400 | `invalid_input` | 文件为空、参数缺失或参数非法 | 修正请求 |
 | 415 | `unsupported_format` | 不是 PDF/OFD/图片 | 不进入发票解析队列 |
-| 422 | `rule_unhandled` | 规则引擎已尝试但无法处理 | 若 `ocr_required=true`，进入 OCR 或人工队列 |
+| 422 | `rule_unhandled` | 规则引擎已尝试但无法处理，或 PDF 文本层不可用/需 OCR | 若 `ocr_required=true`，按 `ocr_enabled` / `ocr_vendor` 进入 OCR、配置修复或人工队列 |
 | 422 | `parse_failed` | 格式支持，但字段抽取失败 | 人工核对或提交样本校准 |
 | 501 | `not_implemented` | 当前类型未实现或 OCR 未启用 | 根据 `document_type` / `engine` 分流 |
 | 500 | `internal_error` | 服务内部错误 | 保留 `request_id` 排查 |

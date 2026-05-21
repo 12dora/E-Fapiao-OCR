@@ -13,6 +13,20 @@ def test_select_digital_general_halfwidth():
     assert fn is digital_general.extract
 
 
+def test_select_legacy_general_invoice_by_fields():
+    text = """
+    发票代码: 144032309110
+    发票号码: 40350564
+    购买方 名称: 测试采购科技有限公司
+    货物或应税劳务、服务名称 规格型号 单位 数量 单价 金额 税率 税额
+    合 计 2862.38 28.62
+    价税合计(大写) 贰仟捌佰玖拾壹元整 (小写) ￥2891.00
+    销货方 名称: 测试销售服务有限公司
+    """
+    fn = select_extractor(text)
+    assert fn is digital_general.extract
+
+
 def test_select_digital_special():
     fn = select_extractor("电子发票(增值税专用发票)\n...")
     assert fn is digital_special.extract

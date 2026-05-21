@@ -71,10 +71,12 @@ def test_parse_pdf_rule_engine_unhandled_returns_machine_readable_engine_status(
     assert resp.status_code == 422
     detail = resp.json()["detail"]
     assert detail["code"] == "rule_unhandled"
+    assert detail["document_type"] == "pdf-fapiao"
     assert detail["engine"]["rule_engine"] == "attempted"
     assert detail["engine"]["ocr_mode"] == "disabled"
     assert detail["engine"]["ocr_required"] is True
     assert detail["engine"]["ocr_used"] is False
+    assert detail["engine"]["ocr_enabled"] is False
 
 
 def test_parse_batch_returns_per_file_results(monkeypatch: pytest.MonkeyPatch):

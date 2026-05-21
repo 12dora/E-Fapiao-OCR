@@ -44,6 +44,7 @@ def select_extractor(text: str, qr_payload: str | None = None) -> Callable[[str]
         "普通发票" in n
         or "通用(电子)发票" in n
         or ("电子发票" in n and "发票号码" in n)
+        or _is_legacy_general_invoice(n)
     ):
         return digital_general.extract
 
@@ -53,3 +54,19 @@ def select_extractor(text: str, qr_payload: str | None = None) -> Callable[[str]
         return lambda t: fallback.extract(qr_payload, text=t)
 
     return lambda t: fallback.extract(None, text=t)
+
+
+def _is_legacy_general_invoice(normalized_text: str) -> bool:
+    core_markers = (
+        "发票代码" in normalized_text
+        and "发票号码" in normalized_text
+        and ("价税合计" in normalized_text or "合计" in normalized_text)
+    )
+    party_markers = (
+        "购买方" in normalized_text
+        or "购方" in normalized_text
+        or "销售方" in normalized_text
+        or "销货方" in normalized_text
+    )
+    item_markers = "货物或应税劳务" in normalized_text or "服务名称" in normalized_text
+    return core_markers and party_markers and item_markers and "专用发票" not in normalized_text

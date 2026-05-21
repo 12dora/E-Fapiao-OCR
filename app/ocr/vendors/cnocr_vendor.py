@@ -19,7 +19,7 @@ class CnOcrVendor:
 
     def __init__(self) -> None:
         try:
-            from cnocr import CnOcr
+            from cnocr import CnOcr  # type: ignore[import-not-found]
         except ImportError as e:
             raise NotImplementedError(
                 'CnOCR 未安装，请先安装可选依赖: pip install "e-fapiao-ocr[ocr-cnocr]"'
@@ -45,5 +45,7 @@ def _to_text_line(item: dict[str, Any]) -> OcrTextLine:
     text = str(item.get("text") or "").strip()
     score = item.get("score")
     position = item.get("position")
-    bbox = position.tolist() if hasattr(position, "tolist") else position
+    bbox = None
+    if position is not None:
+        bbox = position.tolist() if hasattr(position, "tolist") else position
     return OcrTextLine(text=text, score=score, bbox=bbox)

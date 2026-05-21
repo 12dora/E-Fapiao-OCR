@@ -190,7 +190,7 @@ def _extract_party_names(text: str) -> list[str]:
             for name in (_clean_party_name(pair.group(1)), _clean_party_name(pair.group(2)))
             if name
         ]
-    return [_clean_party_name(name) for name in NAME.findall(text)]
+    return [name for raw_name in NAME.findall(text) if (name := _clean_party_name(raw_name))]
 
 
 def _clean_party_name(name: str) -> str | None:
