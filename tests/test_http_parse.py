@@ -75,3 +75,49 @@ def test_parse_pdf_rule_engine_unhandled_returns_machine_readable_engine_status(
     assert detail["engine"]["ocr_mode"] == "disabled"
     assert detail["engine"]["ocr_required"] is True
     assert detail["engine"]["ocr_used"] is False
+
+
+def test_parse_batch_returns_per_file_results(monkeypatch: pytest.MonkeyPatch):
+    from app.parsers.pdf_parser import PdfParser
+
+    monkeypatch.setattr(
+        PdfParser,
+        "_extract_text",
+        staticmethod(lambda content: sanitized.DIGITAL_GENERAL_TEXT),
+    )
+
+    client = TestClient(app)
+    resp = client.post(
+        "/v1/invoices/parse-batch",
+        data={"hint_type": "auto", "ocr_mode": "disabled"},
+        files=[
+            ("files", ("ok.pdf", b"%PDF-1.7 sanitized", "application/pdf")),
+            ("files", ("junk.bin", b"not an invoice", "application/octet-stream")),
+        ],
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "ok"
+    assert body["total"] == 2
+    assert body["succeeded"] == 1
+    assert body["failed"] == 1
+    assert body["items"][0]["index"] == 0
+    assert body["items"][0]["filename"] == "ok.pdf"
+    assert body["items"][0]["status"] == "ok"
+    assert body["items"][0]["data"]["invoice_number"] == "26100000000000000001"
+    assert body["items"][0]["engine"]["ocr_mode"] == "disabled"
+    assert body["items"][1]["index"] == 1
+    assert body["items"][1]["filename"] == "junk.bin"
+    assert body["items"][1]["status"] == "error"
+    assert body["items"][1]["code"] == "unsupported_format"
+    assert body["items"][1]["data"] is None
+
+
+def test_parse_batch_missing_files_returns_400():
+    client = TestClient(app)
+
+    resp = client.post("/v1/invoices/parse-batch")
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["code"] == "invalid_input"

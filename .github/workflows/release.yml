@@ -74,13 +74,96 @@ jobs:
       - name: Smoke test binary
         shell: bash
         run: |
+          set -euo pipefail
           if [[ "${{ matrix.target }}" == windows-* ]]; then
-            ./dist/efapiao-*/efapiao.exe --version
-            ./dist/efapiao-*/efapiao.exe capabilities
+            BIN="$(pwd)/$(find dist -path '*/efapiao.exe' -type f | head -n 1)"
           else
-            ./dist/efapiao-*/efapiao --version
-            ./dist/efapiao-*/efapiao capabilities
+            BIN="$(pwd)/$(find dist -path '*/efapiao' -type f | head -n 1)"
           fi
+          "$BIN" --version
+          "$BIN" capabilities
+
+          PORT=18080
+          "$BIN" serve --host 127.0.0.1 --port "$PORT" > server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true; cat server.log' EXIT
+
+          python - <<'PY'
+          import json
+          import time
+          import urllib.error
+          import urllib.request
+
+          base = "http://127.0.0.1:18080"
+          for _ in range(60):
+              try:
+                  with urllib.request.urlopen(f"{base}/v1/health", timeout=1) as resp:
+                      if json.load(resp) == {"status": "ok"}:
+                          break
+              except Exception:
+                  time.sleep(0.5)
+          else:
+              raise SystemExit("server health check timed out")
+          PY
+
+          python - <<'PY'
+          import json
+          import urllib.error
+          import urllib.request
+          from uuid import uuid4
+
+          def minimal_pdf(text):
+              objects = [
+                  b"<< /Type /Catalog /Pages 2 0 R >>",
+                  b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+                  b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 120] "
+                  b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+                  b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+              ]
+              stream = f"BT /F1 12 Tf 30 80 Td ({text}) Tj ET".encode("ascii")
+              objects.append(
+                  f"<< /Length {len(stream)} >>\nstream\n".encode("ascii")
+                  + stream
+                  + b"\nendstream"
+              )
+              chunks = [b"%PDF-1.4\n"]
+              offsets = [0]
+              for i, obj in enumerate(objects, start=1):
+                  offsets.append(sum(len(chunk) for chunk in chunks))
+                  chunks.append(f"{i} 0 obj\n".encode("ascii") + obj + b"\nendobj\n")
+              xref_offset = sum(len(chunk) for chunk in chunks)
+              chunks.append(f"xref\n0 {len(objects) + 1}\n".encode("ascii"))
+              chunks.append(b"0000000000 65535 f \n")
+              for offset in offsets[1:]:
+                  chunks.append(f"{offset:010d} 00000 n \n".encode("ascii"))
+              chunks.append(
+                  f"trailer << /Size {len(objects) + 1} /Root 1 0 R >>\n"
+                  f"startxref\n{xref_offset}\n%%EOF\n".encode("ascii")
+              )
+              return b"".join(chunks)
+
+          boundary = "----efapiao" + uuid4().hex
+          pdf = minimal_pdf("synthetic smoke")
+          body = (
+              f"--{boundary}\r\n"
+              'Content-Disposition: form-data; name="file"; filename="smoke.pdf"\r\n'
+              "Content-Type: application/pdf\r\n\r\n"
+          ).encode() + pdf + f"\r\n--{boundary}--\r\n".encode()
+          req = urllib.request.Request(
+              "http://127.0.0.1:18080/v1/invoices/parse",
+              data=body,
+              headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+              method="POST",
+          )
+          try:
+              urllib.request.urlopen(req, timeout=5)
+          except urllib.error.HTTPError as e:
+              payload = json.loads(e.read().decode("utf-8"))
+              assert e.code in {415, 422}, payload
+              assert payload["detail"]["code"] in {"parse_failed", "rule_unhandled"}, payload
+          else:
+              raise SystemExit("synthetic smoke PDF unexpectedly parsed successfully")
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: efapiao-${{ matrix.target }}

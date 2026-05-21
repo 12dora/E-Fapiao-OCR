@@ -29,7 +29,6 @@ PYINSTALLER_EXCLUDES = [
     "python_socks",
     "socksio",
     "trio",
-    "uvicorn.middleware.wsgi",
     "uvicorn.protocols.websockets",
     "uvicorn.supervisors",
     "uvicorn.workers",
