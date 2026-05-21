@@ -92,7 +92,7 @@
 ## 已完成（按日期倒序）
 
 ### 2026-05-21（M2 继续）
-- 新增多平台二进制发布能力：本地 `scripts/build_binary.py` 可构建当前平台单文件二进制；GitHub Actions 在 SemVer tag 上构建 linux-x86_64 / linux-arm64 / darwin-x86_64 / darwin-arm64 / windows-x86_64 并发布到 GitHub Release
+- 新增多平台二进制发布能力：本地 `scripts/build_binary.py` 可构建当前平台单文件二进制；GitHub Actions 在 SemVer tag 上构建 linux-x86_64 / linux-arm64 / darwin-arm64 / windows-x86_64 并发布到 GitHub Release；darwin-x86_64 可在 Intel Mac 本地构建
 - Release 产物命名统一为 `efapiao-<version>-<os>-<arch>.tar.gz` 或 Windows `.zip`，并生成 `SHA256SUMS`
 - 测试套件全面改为脱敏合成数据源：移除 `tests/` 对 `docs/sample` 真实发票/OFD 的读取依赖，新增 `tests/fixtures/sanitized.py` 统一生成脱敏文本和最小 OFD 容器
 - 新增 CLI 回归测试、HTTP 鉴权/文件大小契约测试、OFD magic bytes 检测测试，以及测试套件策略测试，防止未来重新依赖 `docs/sample`

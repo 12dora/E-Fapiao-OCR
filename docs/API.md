@@ -223,9 +223,11 @@ GitHub Release 资产命名：
 |---|---|
 | Linux x86_64 | `efapiao-<version>-linux-x86_64.tar.gz` |
 | Linux arm64 | `efapiao-<version>-linux-arm64.tar.gz` |
-| macOS x86_64 | `efapiao-<version>-darwin-x86_64.tar.gz` |
 | macOS arm64 | `efapiao-<version>-darwin-arm64.tar.gz` |
 | Windows x86_64 | `efapiao-<version>-windows-x86_64.zip` |
+
+`darwin-x86_64` 可在 Intel Mac 本地用 `scripts/build_binary.py` 构建；默认 GitHub
+Release 资产优先发布当前更常用且 runner 可用性更稳定的平台组合。
 
 二进制提供与 CLI 相同的命令：
 

@@ -124,7 +124,7 @@ with tencent_ocr_credentials(secret_id="AKID...", secret_key="...", token=None):
 
 ```bash
 pip install -e ".[build-bin]"
-python scripts/build_binary.py --version v0.1.0
+python scripts/build_binary.py --version v0.1.1
 ```
 
 产物位于 `dist/`，命名遵循：
@@ -137,11 +137,11 @@ efapiao-<semver>-windows-x86_64.zip
 GitHub Release 使用 SemVer tag 触发，例如：
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
-Release workflow 会构建 `linux-x86_64`、`linux-arm64`、`darwin-x86_64`、`darwin-arm64`、`windows-x86_64`，并上传 `SHA256SUMS`。默认二进制包含规则引擎与 HTTP/腾讯 OCR vendor；本地 CnOCR 模型不打入默认 release 产物。
+Release workflow 会构建 `linux-x86_64`、`linux-arm64`、`darwin-arm64`、`windows-x86_64`，并上传 `SHA256SUMS`。`darwin-x86_64` 可在 Intel Mac 本地运行 `scripts/build_binary.py` 生成。默认二进制包含规则引擎与 HTTP/腾讯 OCR vendor；本地 CnOCR 模型不打入默认 release 产物。
 
 ## 不做
 
