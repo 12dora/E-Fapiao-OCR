@@ -92,6 +92,7 @@
 ## 已完成（按日期倒序）
 
 ### 2026-05-21（M2 继续）
+- 二进制瘦身：PdfParser 从 `pdfplumber/pdfminer` 切换到 `pypdfium2`，PyInstaller 排除开发工具、Uvicorn standard extras、WebSocket/热重载和 Pillow 罕见格式插件；macOS arm64 本地产物从约 31MB 降到约 15MB
 - 新增多平台二进制发布能力：本地 `scripts/build_binary.py` 可构建当前平台单文件二进制；GitHub Actions 在 SemVer tag 上构建 linux-x86_64 / linux-arm64 / darwin-arm64 / windows-x86_64 并发布到 GitHub Release；darwin-x86_64 可在 Intel Mac 本地构建
 - Release 产物命名统一为 `efapiao-<version>-<os>-<arch>.tar.gz` 或 Windows `.zip`，并生成 `SHA256SUMS`
 - 测试套件全面改为脱敏合成数据源：移除 `tests/` 对 `docs/sample` 真实发票/OFD 的读取依赖，新增 `tests/fixtures/sanitized.py` 统一生成脱敏文本和最小 OFD 容器
@@ -144,7 +145,7 @@
 ### 2026-05-20（M1）
 - 实装 §6 完整 Pydantic schema（`app/api/schemas.py`）
 - FormatDetector：PDF / OFD（ZIP+OFD.xml 嗅探）/ JPEG / PNG / GIF
-- PdfParser：pdfplumber 文本层抽取，多页拼接
+- PdfParser：pypdfium2 文本层抽取，多页拼接
 - VersionAdapter：关键字分发（半/全角括号都兼容）
 - digital_general extractor：发票号 / 日期 / 双方名称及税号 / 行项目 / 金额 / 大小写合计 / 开票人
 - Normalizer：金额 Decimal 两位、日期校验、§6 字段补 null 不省略键
@@ -156,7 +157,7 @@
 
 ### 2026-05-20（M0）
 - 建立项目目录骨架（`app/{api,core,parsers,extractors}` + `tests/fixtures`）
-- `pyproject.toml`：FastAPI / pdfplumber / pyzbar / httpx + dev 套件；注册 `efapiao` CLI 入口
+- `pyproject.toml`：FastAPI / pypdfium2 / pyzbar / httpx + dev 套件；注册 `efapiao` CLI 入口
 - Parser 抽象 + OFD/Image 占位（抛 NotImplementedError）
 - 所有核心模块的接口签名（detector / normalizer / forwarder / version_adapter / 各 extractor）
 - `/v1/health` + 冒烟测试
@@ -180,7 +181,7 @@
 
 ## 已知遗留（不阻塞 M1 收口，记入 M2 backlog）
 
-- **items 名称含尾部数字**：尾部金额正则之前的 prefix 仍包含 `数量`/`单价`，理想是用 pdfplumber 的 `extract_tables()` 分列。M2 处理（专票表格也同款问题）。
+- **items 名称含尾部数字**：尾部金额正则之前的 prefix 仍包含 `数量`/`单价`，理想是用文本坐标或表格提取能力分列。M2 处理（专票表格也同款问题）。
 - **QR 兜底仅最小可用**：当前只填 invoice_number / issue_date / amount_with_tax / checksum；复杂二维码字段语义、票种细分和真实扫描件矩阵仍需继续实测。
 - **12306 暂未拆分价税**：电子客票样本文本只提供票价/退票费，当前填入 `amount_with_tax` 与行项目金额，`amount_without_tax` / `tax_amount` 仍为 null。
 - **路径轮廓型 OFD 暂未 OCR**：`docs/sample/ofd-fapiao/电子发票.ofd` 文字被转为 PathObject 轮廓，无 TextCode 文本层；需后续接 OFD 渲染或 OCR vendor。
@@ -191,7 +192,7 @@
 
 1. **QR 真实样本回归**：补扫描件 / 无文本层 PDF 样本，验证 pyzbar 渲染分辨率与字段位置。
 2. **QR 字段语义细化**：确认不同税务二维码中金额字段是含税、未税还是价税合计，必要时按版本号分支。
-3. **items 分列改造**：试用 `pdfplumber.Page.extract_tables()`；若噪声多则退回基于坐标的简单分列。
+3. **items 分列改造**：基于 pypdfium2 文本坐标尝试简单分列。
 4. **多地版式**：找两份不同税局出具的普票/专票，验证现有正则在 `名称 / 销 / 售 / 信` 终止符上的鲁棒性。
 5. **12306 票价语义**：若下游需要区分票价 / 退票费 / 差额退票，需确认是否放入 `remark` 或 `extra.rail_12306`（会涉及 schema 扩展）。
 6. **OCR vendor 实测**：在 amd64 / arm64 纯 CPU 容器内实测 CnOCR 冷启动、单页延迟和模型缓存策略。
@@ -202,7 +203,7 @@
 
 | 日期 | 决策 | 原因 |
 |---|---|---|
-| 2026-05-20 | 选用 FastAPI + pdfplumber + pyzbar | DESIGN.md §8 已锁定 |
+| 2026-05-20 | 选用 FastAPI + PDF 文本层解析 + pyzbar | DESIGN.md §8 已锁定 |
 | 2026-05-20 | 一期不引入 Redis / MQ / DB | DESIGN.md §2.3 红线 |
 | 2026-05-20 | 透传强制 HTTPS、禁内网地址 | 防 SSRF（DESIGN.md §13） |
 | 2026-05-20 | 三形态等价入口（库/CLI/HTTP） | 用户决策：面向本机集成，需多语言宿主支持 |

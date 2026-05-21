@@ -1,6 +1,6 @@
 """数电普票 extractor。
 
-输入：pdfplumber 抽出的页面文本。
+输入：PDF 文本层抽出的页面文本。
 输出：未归一化的 RawInvoice dict。
 
 字段抽取逻辑下沉到 app.extractors._shared，本文件只做"按类型组装"。
