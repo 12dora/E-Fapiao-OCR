@@ -13,7 +13,7 @@
 
 实测指标（单张 PDF，本机 Python 3.11）：
 - `/v1/invoices/parse` 端到端 **21ms**（目标 P95 < 500ms ✅）
-- 65 个测试通过，0 skip；测试输入已全部改为脱敏合成数据，不依赖 `docs/sample` 真实发票
+- 68 个测试通过，0 skip；测试输入已全部改为脱敏合成数据，不依赖 `docs/sample` 真实发票
 
 ---
 
@@ -38,7 +38,7 @@
 |---|---|---|
 | Python 库 | `from app.sdk import parse_invoice` | ✅ pipeline 全串通（PDF 普票） |
 | CLI | `efapiao parse <file>` / `efapiao serve` / `efapiao capabilities` | ✅ 脱敏回归通过，退出码合约就位 |
-| HTTP 服务 | `uvicorn app.main:app` 或 `efapiao serve` | ✅ `/v1/health` `/v1/capabilities` `/v1/invoices/parse` 全可用 |
+| HTTP 服务 | `uvicorn app.main:app` 或 `efapiao serve` | ✅ `/v1/health` `/v1/capabilities` `/v1/invoices/parse` `/v1/invoices/parse-batch` 全可用 |
 
 ---
 
@@ -47,8 +47,8 @@
 | 模块 | 文件 | 状态 | 备注 |
 |---|---|---|---|
 | FastAPI 入口 | `app/main.py` | ✅ 已完成 | `create_app()` + `/v1` 路由挂载 |
-| 路由 | `app/api/routes.py` | ✅ 已完成 | `health` / `capabilities` / `invoices/parse`；错误体返回 `engine` 便于上游分流 |
-| Pydantic schemas | `app/api/schemas.py` | ✅ 已完成 | §6 全字段：Party/Item/InvoiceData/ParseResponse/ErrorResponse/EngineStatus 等 |
+| 路由 | `app/api/routes.py` | ✅ 已完成 | `health` / `capabilities` / `invoices/parse` / `invoices/parse-batch`；错误体返回 `engine` 便于上游分流 |
+| Pydantic schemas | `app/api/schemas.py` | ✅ 已完成 | §6 全字段：Party/Item/InvoiceData/ParseResponse/BatchParseResponse/ErrorResponse/EngineStatus 等 |
 | **SDK 门面** | `app/sdk.py` | ✅ 已完成 | `parse_invoice()` 串通 detector → parser → adapter → extractor → normalizer；支持 `ocr_mode` |
 | **CLI** | `app/cli.py` | ✅ 已完成 | 脱敏回归；异常→退出码（0/2/3/4/5）合约就位；支持 `--ocr-mode` |
 | 自定义异常 | `app/errors.py` | ✅ 已完成 | InvalidInput / UnsupportedFormat / ParseFailed / RuleEngineUnhandled |
@@ -67,7 +67,7 @@
 | Extractor: fallback | `app/extractors/fallback.py` | 🟡 最小可用 | 二维码兜底提取发票号 / 日期 / 金额 / 校验码 |
 | OCR vendor | `app/ocr/` | 🟡 接口已定 | 支持 CnOCR / 第三方 HTTP API / 腾讯云；CnOCR 为可选依赖 |
 | 配置 | `app/config.py` | ✅ 已完成 | 鉴权可选 / host / port 等环境变量 |
-| 测试 | `tests/` | ✅ 65 通过 / 0 skip | 单元 + 脱敏合成 PDF/OFD 集成 + HTTP/CLI 端到端 + OCR vendor + QR fallback + URL 安全 |
+| 测试 | `tests/` | ✅ 68 通过 / 0 skip | 单元 + 脱敏合成 PDF/OFD 集成 + HTTP/CLI 端到端 + OCR vendor + QR fallback + URL 安全 |
 | Docker | `Dockerfile` / `.dockerignore` | ✅ 已完成 | 含 libzbar0 系统依赖 |
 | Release 二进制 | `.github/workflows/release.yml` / `scripts/build_binary.py` | ✅ 已接入 | PyInstaller 本地构建 + GitHub Actions 多平台 Release |
 | 文档 | `DESIGN.md` / `README.md` / `AGENT_GUIDE.md` | ✅ 已完成 | DESIGN.md §12 已加部署形态 |
@@ -92,6 +92,9 @@
 ## 已完成（按日期倒序）
 
 ### 2026-05-21（M2 继续）
+- 新增 HTTP 批量解析接口 `POST /v1/invoices/parse-batch`：支持 multipart 多 `files` 上传，整批共享 `hint_type` / `ocr_mode`，逐文件返回 `status=ok/error`、`data` 或 `code/message`，单文件失败不影响整批响应
+- 修复 PyInstaller 构建中过度排除 `uvicorn.middleware.wsgi` 导致 release 二进制 `efapiao serve` 启动失败的问题
+- Release smoke test 增强：构建后真实启动 `efapiao serve`，请求 `/v1/health`，并向 `/v1/invoices/parse` POST 最小合法 PDF，防止服务端依赖被误排除
 - 二进制瘦身：PdfParser 从 `pdfplumber/pdfminer` 切换到 `pypdfium2`，PyInstaller 排除开发工具、Uvicorn standard extras、WebSocket/热重载和 Pillow 罕见格式插件；macOS arm64 本地产物从约 31MB 降到约 15MB
 - 新增多平台二进制发布能力：本地 `scripts/build_binary.py` 可构建当前平台单文件二进制；GitHub Actions 在 SemVer tag 上构建 linux-x86_64 / linux-arm64 / darwin-arm64 / windows-x86_64 并发布到 GitHub Release；darwin-x86_64 可在 Intel Mac 本地构建
 - Release 产物命名统一为 `efapiao-<version>-<os>-<arch>.tar.gz` 或 Windows `.zip`，并生成 `SHA256SUMS`

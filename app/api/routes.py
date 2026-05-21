@@ -16,6 +16,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 
 from app.api.schemas import (
+    BatchParseItem,
+    BatchParseResponse,
     CapabilitiesResponse,
     EngineStatus,
     ErrorResponse,
@@ -81,6 +83,108 @@ async def parse(
     if file is None:
         _raise(400, request_id, "invalid_input", "缺少 file 字段")
 
+    content = await _read_upload(file, request_id)
+    item = _parse_content(
+        request_id=request_id,
+        content=content,
+        filename=file.filename,
+        hint_type=hint_type,
+        ocr_mode=ocr_mode,
+        start=start,
+    )
+    if item.status == "error":
+        _raise(
+            _http_status_for_error(item.code),
+            request_id,
+            item.code or "internal_error",
+            item.message or "服务内部错误",
+            document_type=item.document_type,
+            invoice_type=item.invoice_type,
+            engine=item.engine,
+        )
+
+    assert item.data is not None
+    assert item.format is not None
+    assert item.document_type is not None
+    assert item.invoice_type is not None
+    return ParseResponse(
+        request_id=request_id,
+        status="ok",
+        format=item.format,
+        document_type=item.document_type,
+        invoice_type=item.invoice_type,
+        data=item.data,
+        engine=item.engine,
+        elapsed_ms=item.elapsed_ms,
+    )
+
+
+@router.post(
+    "/invoices/parse-batch",
+    response_model=BatchParseResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+    dependencies=[Depends(require_api_key)],
+)
+async def parse_batch(
+    files: Annotated[list[UploadFile] | None, File()] = None,
+    hint_type: Annotated[str | None, Form()] = "auto",
+    ocr_mode: Annotated[str, Form()] = "auto",
+) -> BatchParseResponse:
+    request_id = uuid.uuid4().hex
+    start = time.perf_counter()
+
+    if not files:
+        _raise(400, request_id, "invalid_input", "缺少 files 字段")
+
+    items: list[BatchParseItem] = []
+    for index, file in enumerate(files):
+        item_start = time.perf_counter()
+        try:
+            content = await _read_upload(file, request_id)
+        except HTTPException as e:
+            detail = e.detail if isinstance(e.detail, dict) else {}
+            items.append(
+                BatchParseItem(
+                    index=index,
+                    filename=file.filename,
+                    status="error",
+                    code=detail.get("code") or "invalid_input",
+                    message=detail.get("message") or "文件读取失败",
+                    engine=_engine_status(ocr_mode),
+                    elapsed_ms=int((time.perf_counter() - item_start) * 1000),
+                )
+            )
+            continue
+
+        items.append(
+            _parse_content(
+                request_id=request_id,
+                content=content,
+                filename=file.filename,
+                hint_type=hint_type,
+                ocr_mode=ocr_mode,
+                index=index,
+                start=item_start,
+            )
+        )
+
+    succeeded = sum(1 for item in items if item.status == "ok")
+    elapsed_ms = int((time.perf_counter() - start) * 1000)
+    return BatchParseResponse(
+        request_id=request_id,
+        status="ok",
+        total=len(items),
+        succeeded=succeeded,
+        failed=len(items) - succeeded,
+        items=items,
+        elapsed_ms=elapsed_ms,
+    )
+
+
+async def _read_upload(file: UploadFile, request_id: str) -> bytes:
     content = await file.read()
     if not content:
         _raise(400, request_id, "invalid_input", "文件内容为空")
@@ -91,19 +195,33 @@ async def parse(
             "invalid_input",
             f"文件超过上限 {settings.max_file_bytes} 字节",
         )
+    return content
 
+
+def _parse_content(
+    *,
+    request_id: str,
+    content: bytes,
+    filename: str | None,
+    hint_type: str | None,
+    ocr_mode: str,
+    start: float,
+    index: int = 0,
+) -> BatchParseItem:
     try:
         data = parse_invoice(content, hint_type=hint_type, ocr_mode=ocr_mode)
     except InvalidInput as e:
-        _raise(400, request_id, "invalid_input", str(e))
+        return _error_item(index, filename, "invalid_input", str(e), ocr_mode, start)
     except UnsupportedFormat as e:
-        _raise(415, request_id, "unsupported_format", str(e))
+        return _error_item(index, filename, "unsupported_format", str(e), ocr_mode, start)
     except RuleEngineUnhandled as e:
-        _raise(
-            422,
-            request_id,
+        return _error_item(
+            index,
+            filename,
             "rule_unhandled",
             str(e),
+            ocr_mode,
+            start,
             document_type=e.document_type,
             invoice_type=e.invoice_type,
             engine=_engine_status(
@@ -113,28 +231,32 @@ async def parse(
             ),
         )
     except ParseFailed as e:
-        _raise(422, request_id, "parse_failed", str(e))
+        return _error_item(index, filename, "parse_failed", str(e), ocr_mode, start)
     except UnsupportedDocumentType as e:
-        _raise(
-            501,
-            request_id,
+        return _error_item(
+            index,
+            filename,
             "not_implemented",
             str(e) or "该格式暂未实装",
+            ocr_mode,
+            start,
             document_type=e.document_type,
             invoice_type=e.invoice_type,
             engine=_engine_status(ocr_mode),
         )
     except NotImplementedError as e:
-        _raise(
-            501,
-            request_id,
+        return _error_item(
+            index,
+            filename,
             "not_implemented",
             str(e) or "该格式暂未实装",
+            ocr_mode,
+            start,
             engine=_engine_status(ocr_mode, ocr_required=True),
         )
     except Exception:
         logger.exception("internal_error request_id=%s", request_id)
-        _raise(500, request_id, "internal_error", "服务内部错误")
+        return _error_item(index, filename, "internal_error", "服务内部错误", ocr_mode, start)
 
     elapsed_ms = int((time.perf_counter() - start) * 1000)
     invoice_data = InvoiceData.model_validate(data)
@@ -145,8 +267,9 @@ async def parse(
         invoice_data.invoice_type,
         elapsed_ms,
     )
-    return ParseResponse(
-        request_id=request_id,
+    return BatchParseItem(
+        index=index,
+        filename=filename,
         status="ok",
         format=invoice_data.source.format,
         document_type=invoice_data.document_type,
@@ -162,6 +285,31 @@ async def parse(
     )
 
 
+def _error_item(
+    index: int,
+    filename: str | None,
+    code: str,
+    message: str,
+    ocr_mode: str,
+    start: float,
+    *,
+    document_type: str | None = None,
+    invoice_type: str | None = None,
+    engine: EngineStatus | None = None,
+) -> BatchParseItem:
+    return BatchParseItem(
+        index=index,
+        filename=filename,
+        status="error",
+        code=code,
+        message=message,
+        document_type=document_type,
+        invoice_type=invoice_type,
+        engine=engine or _engine_status(ocr_mode),
+        elapsed_ms=int((time.perf_counter() - start) * 1000),
+    )
+
+
 def _raise(
     status: int,
     request_id: str,
@@ -171,7 +319,7 @@ def _raise(
     document_type: str | None = None,
     invoice_type: str | None = None,
     engine: EngineStatus | None = None,
-) -> None:
+    ) -> None:
     raise HTTPException(
         status_code=status,
         detail={
@@ -184,6 +332,18 @@ def _raise(
             "engine": engine.model_dump() if engine else None,
         },
     )
+
+
+def _http_status_for_error(code: str | None) -> int:
+    if code == "invalid_input":
+        return 400
+    if code == "unsupported_format":
+        return 415
+    if code in {"rule_unhandled", "parse_failed"}:
+        return 422
+    if code == "not_implemented":
+        return 501
+    return 500
 
 
 def _engine_status(

@@ -122,21 +122,48 @@ class ParseResponse(BaseModel):
     elapsed_ms: int
 
 
+ErrorCode = Literal[
+    "invalid_input",
+    "unsupported_format",
+    "rule_unhandled",
+    "parse_failed",
+    "not_implemented",
+    "internal_error",
+]
+
+
 class ErrorResponse(BaseModel):
     request_id: str
     status: Literal["error"] = "error"
-    code: Literal[
-        "invalid_input",
-        "unsupported_format",
-        "rule_unhandled",
-        "parse_failed",
-        "not_implemented",
-        "internal_error",
-    ]
+    code: ErrorCode
     message: str
     document_type: DocumentType | None = None
     invoice_type: InvoiceType | None = None
     engine: EngineStatus | None = None
+
+
+class BatchParseItem(BaseModel):
+    index: int
+    filename: str | None = None
+    status: Literal["ok", "error"]
+    format: FileFormat | None = None
+    document_type: DocumentType | None = None
+    invoice_type: InvoiceType | None = None
+    data: InvoiceData | None = None
+    code: ErrorCode | None = None
+    message: str | None = None
+    engine: EngineStatus
+    elapsed_ms: int
+
+
+class BatchParseResponse(BaseModel):
+    request_id: str
+    status: Literal["ok"]
+    total: int
+    succeeded: int
+    failed: int
+    items: list[BatchParseItem]
+    elapsed_ms: int
 
 
 class HealthResponse(BaseModel):

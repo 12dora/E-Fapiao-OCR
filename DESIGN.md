@@ -68,6 +68,7 @@
                 ┌─────────────────────────────────────────┐
    PDF/OFD/IMG  │              API Gateway                │
    ──────────►  │   POST /v1/invoices/parse               │
+                │   POST /v1/invoices/parse-batch         │
                 │   POST /v1/invoices/parse-and-forward   │
                 └────────────────┬────────────────────────┘
                                  │
@@ -154,7 +155,23 @@ OCR 或腾讯云 OCR。规则引擎包括 PDF 文本层、PDF 二维码、OFD XM
 }
 ```
 
-### 5.2 解析并透传
+### 5.2 批量同步解析
+
+```
+POST /v1/invoices/parse-batch
+Content-Type: multipart/form-data
+
+- files: <binary>[]                             # 必填，重复字段名上传多个文件
+- hint_type: "pdf" | "ofd" | "image" | "auto"   # 默认 auto，整批共享
+- ocr_mode: "auto" | "disabled" | "required"    # 默认 auto，整批共享
+```
+
+批量接口面向邮件附件、报销批量导入等场景。每个文件独立返回 `status=ok/error`、
+`data` 或 `code/message`，单个失败不会让整批 HTTP 请求失败。当前实现为服务进程内串行
+解析，主要减少上游多次 HTTP 请求成本；高吞吐场景由上游以有限并发调用，或后续引入
+服务端 worker 队列。
+
+### 5.3 解析并透传
 
 ```
 POST /v1/invoices/parse-and-forward
@@ -169,7 +186,7 @@ POST /v1/invoices/parse-and-forward
 - `fire_and_forget`：立即返回解析结果，后台异步 POST。
 - `wait`：等下游响应，把下游 status/body 一并回传。
 
-### 5.3 元信息
+### 5.4 元信息
 
 ```
 GET /v1/health           # 健康检查
@@ -184,7 +201,7 @@ GET /v1/capabilities     # 返回当前支持的 format / document_type / invoic
 `EFAPIAO_OCR_VENDOR=none` 时返回 `not_implemented`，配置 `cnocr` / `http` / `tencent`
 vendor 后返回 `supported`。
 
-### 5.4 错误码
+### 5.5 错误码
 
 | HTTP | code | 含义 |
 |---|---|---|

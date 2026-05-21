@@ -119,7 +119,92 @@ Content-Type: multipart/form-data
 }
 ```
 
-### 3.4 错误响应
+### 3.4 批量解析文件
+
+```http
+POST /v1/invoices/parse-batch
+Content-Type: multipart/form-data
+```
+
+表单字段：
+
+| 字段 | 类型 | 必填 | 默认 | 说明 |
+|---|---|---|---|---|
+| `files` | binary[] | 是 | 无 | 多个 PDF / OFD / 图片文件，字段名重复传入 |
+| `hint_type` | string | 否 | `auto` | 整批共享：`pdf` / `ofd` / `image` / `auto` |
+| `ocr_mode` | string | 否 | `auto` | 整批共享：`auto` / `disabled` / `required` |
+
+示例：
+
+```bash
+curl -F "files=@invoice-1.pdf" \
+     -F "files=@invoice-2.pdf" \
+     -F "hint_type=auto" \
+     -F "ocr_mode=disabled" \
+     http://127.0.0.1:8000/v1/invoices/parse-batch
+```
+
+批量接口按文件返回结果。单个文件失败不会让整批请求失败；整体 HTTP 状态仍为
+`200`，调用方根据 `items[].status` / `items[].code` 分流。
+
+```json
+{
+  "request_id": "uuid",
+  "status": "ok",
+  "total": 2,
+  "succeeded": 1,
+  "failed": 1,
+  "items": [
+    {
+      "index": 0,
+      "filename": "invoice-1.pdf",
+      "status": "ok",
+      "format": "pdf",
+      "document_type": "pdf-fapiao",
+      "invoice_type": "digital_general",
+      "data": { "invoice_number": "26100000000000000001" },
+      "code": null,
+      "message": null,
+      "engine": {
+        "rule_engine": "attempted",
+        "ocr_mode": "disabled",
+        "ocr_enabled": false,
+        "ocr_used": false,
+        "ocr_required": false,
+        "ocr_vendor": null
+      },
+      "elapsed_ms": 18
+    },
+    {
+      "index": 1,
+      "filename": "unknown.bin",
+      "status": "error",
+      "format": null,
+      "document_type": null,
+      "invoice_type": null,
+      "data": null,
+      "code": "unsupported_format",
+      "message": "无法识别的文件格式",
+      "engine": {
+        "rule_engine": "attempted",
+        "ocr_mode": "disabled",
+        "ocr_enabled": false,
+        "ocr_used": false,
+        "ocr_required": false,
+        "ocr_vendor": null
+      },
+      "elapsed_ms": 1
+    }
+  ],
+  "elapsed_ms": 19
+}
+```
+
+批量接口当前在服务进程内串行处理每个文件。它的主要收益是减少上游多次 HTTP
+握手和请求管理成本；如需提高吞吐，建议上游以有限并发调用批量接口，或后续引入服务端
+worker 队列。
+
+### 3.5 错误响应
 
 FastAPI 返回时错误体位于 `detail`：
 
