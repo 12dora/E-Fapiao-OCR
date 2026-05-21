@@ -42,7 +42,33 @@ def test_parse_real_pdf_returns_200():
     body = resp.json()
     assert body["status"] == "ok"
     assert body["format"] == "pdf"
+    assert body["document_type"] == "pdf-fapiao"
     assert body["invoice_type"] == "digital_general"
+    assert body["data"]["document_type"] == "pdf-fapiao"
     assert body["data"]["invoice_number"] == "26317000001791661472"
     assert body["data"]["amount_with_tax"] == "211.00"
+    assert body["engine"]["rule_engine"] == "attempted"
+    assert body["engine"]["ocr_mode"] == "auto"
+    assert body["engine"]["ocr_used"] is False
     assert body["elapsed_ms"] >= 0
+
+
+def test_parse_pdf_rule_engine_unhandled_returns_machine_readable_engine_status(monkeypatch):
+    from app.parsers.pdf_parser import PdfParser
+
+    monkeypatch.setattr(PdfParser, "_extract_text", staticmethod(lambda content: ""))
+    monkeypatch.setattr(PdfParser, "_extract_qr_payload", staticmethod(lambda content: None))
+
+    client = TestClient(app)
+    resp = client.post(
+        "/v1/invoices/parse",
+        data={"hint_type": "pdf", "ocr_mode": "disabled"},
+        files={"file": ("scan.pdf", b"%PDF-1.7 fake", "application/pdf")},
+    )
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert detail["code"] == "rule_unhandled"
+    assert detail["engine"]["rule_engine"] == "attempted"
+    assert detail["engine"]["ocr_mode"] == "disabled"
+    assert detail["engine"]["ocr_required"] is True
+    assert detail["engine"]["ocr_used"] is False

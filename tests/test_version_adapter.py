@@ -1,3 +1,4 @@
+from app.errors import ParseFailed
 from app.extractors import digital_general, digital_special, rail_12306
 from app.extractors.version_adapter import select_extractor
 
@@ -24,10 +25,24 @@ def test_select_rail_12306():
 
 def test_fallback_when_unknown():
     fn = select_extractor("一些不相关的文字")
-    # fallback 返回的是 lambda；直接调用应抛 NotImplementedError
+    # fallback 返回的是 lambda；没有 QR payload 时直接调用应抛 ParseFailed
     try:
         fn("x")
-    except NotImplementedError:
+    except ParseFailed:
         pass
     else:
-        raise AssertionError("fallback 应抛 NotImplementedError")
+        raise AssertionError("fallback 应抛 ParseFailed")
+
+
+def test_fallback_with_qr_payload():
+    fn = select_extractor(
+        "一些不相关的文字",
+        qr_payload="01,10,033002100111,26317000001791661472,211.00,20260517,12345678901234567890",
+    )
+    raw = fn("x")
+    assert raw["invoice_type"] == "digital_general"
+    assert raw["invoice_number"] == "26317000001791661472"
+    assert raw["invoice_code"] == "033002100111"
+    assert raw["issue_date"] == "2026-05-17"
+    assert raw["amount_with_tax"] == "211.00"
+    assert raw["checksum"] == "12345678901234567890"

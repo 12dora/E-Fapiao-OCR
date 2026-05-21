@@ -23,3 +23,35 @@ class UnsupportedFormat(EfapiaoError):
 
 class ParseFailed(EfapiaoError):
     pass
+
+
+class RuleEngineUnhandled(ParseFailed):
+    def __init__(
+        self,
+        message: str,
+        *,
+        file_format: str | None = None,
+        document_type: str | None = None,
+        invoice_type: str | None = None,
+        ocr_required: bool = False,
+        ocr_used: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.file_format = file_format
+        self.document_type = document_type
+        self.invoice_type = invoice_type
+        self.ocr_required = ocr_required
+        self.ocr_used = ocr_used
+
+
+class UnsupportedDocumentType(NotImplementedError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        document_type: str,
+        invoice_type: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.document_type = document_type
+        self.invoice_type = invoice_type

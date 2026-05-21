@@ -20,6 +20,7 @@ _ITEM_AMOUNT_KEYS = {"unit_price", "amount", "tax_amount", "quantity"}
 
 def normalize(raw: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {
+        "document_type": _str_or_none(raw.get("document_type")) or _infer_document_type(raw),
         "invoice_type": raw.get("invoice_type"),
         "invoice_number": _str_or_none(raw.get("invoice_number")),
         "invoice_code": _str_or_none(raw.get("invoice_code")),
@@ -68,7 +69,24 @@ def _normalize_source(s: dict[str, Any] | None) -> dict[str, Any]:
         "format": s.get("format") or "pdf",
         "parser_version": s.get("parser_version") or __version__,
         "extracted_by": s.get("extracted_by") or "text_layer",
+        "ocr_vendor": _str_or_none(s.get("ocr_vendor")),
     }
+
+
+def _infer_document_type(raw: dict[str, Any]) -> str:
+    fmt = (raw.get("source") or {}).get("format")
+    invoice_type = raw.get("invoice_type")
+    if fmt == "ofd" and invoice_type == "air_itinerary":
+        return "ofd-air-itinerary"
+    if fmt == "ofd":
+        return "ofd-fapiao"
+    if fmt == "pdf" and invoice_type == "rail_12306":
+        return "pdf-rail-12306"
+    if fmt == "image" and invoice_type == "air_itinerary":
+        return "image-air-itinerary"
+    if fmt == "image":
+        return "image-fapiao"
+    return "pdf-fapiao"
 
 
 def _str_or_none(v: Any) -> str | None:
@@ -82,7 +100,8 @@ def _money(v: Any) -> str | None:
     if v is None or v == "" or v == "*":
         return None
     try:
-        return str(Decimal(str(v).replace(",", "").replace("¥", "").replace("￥", "").strip()).quantize(Decimal("0.01")))
+        cleaned = str(v).replace(",", "").replace("¥", "").replace("￥", "").strip()
+        return str(Decimal(cleaned).quantize(Decimal("0.01")))
     except (InvalidOperation, ValueError):
         return None
 
@@ -94,7 +113,9 @@ def _normalize_date(v: Any) -> str | None:
     # 已经是 YYYY-MM-DD
     if len(s) == 10 and s[4] == "-" and s[7] == "-":
         try:
-            int(s[:4]); int(s[5:7]); int(s[8:10])
+            int(s[:4])
+            int(s[5:7])
+            int(s[8:10])
             return s
         except ValueError:
             return None
