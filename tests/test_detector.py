@@ -1,4 +1,5 @@
 from app.core.detector import detect
+from tests.fixtures.sanitized import make_ofd_air_itinerary
 
 
 def test_pdf_magic():
@@ -11,6 +12,10 @@ def test_jpeg_magic():
 
 def test_png_magic():
     assert detect(b"\x89PNG\r\n\x1a\nfoo") == "image"
+
+
+def test_ofd_zip_magic_and_ofd_xml():
+    assert detect(make_ofd_air_itinerary()) == "ofd"
 
 
 def test_unknown():

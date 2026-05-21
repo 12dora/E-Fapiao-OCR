@@ -13,7 +13,7 @@
 
 实测指标（单张 PDF，本机 Python 3.11）：
 - `/v1/invoices/parse` 端到端 **21ms**（目标 P95 < 500ms ✅）
-- 102 个测试通过、1 个旧样本缺失 skip（含 40 个 manifest 真样本 + OFD 行程单解析 / OFD 发票识别 + OCR/QR/URL 安全）
+- 65 个测试通过，0 skip；测试输入已全部改为脱敏合成数据，不依赖 `docs/sample` 真实发票
 
 ---
 
@@ -22,7 +22,7 @@
 | 阶段 | 内容 | 状态 | 备注 |
 |---|---|---|---|
 | M0 | 项目骨架 + 三形态入口（库/CLI/HTTP） | ✅ 已完成 | 2026-05-20 |
-| M1 | sdk.parse_invoice 串通 + 数电普票 extractor + 真样本回归 | ✅ 已完成 | 2026-05-20 |
+| M1 | sdk.parse_invoice 串通 + 数电普票 extractor + 脱敏回归 | ✅ 已完成 | 2026-05-20 |
 | M2 | 数电专票 + 12306 + 多地版式适配 | 🟡 进行中 | 40 份本地真样本 + 腾讯 OCR 对照通过 |
 | M3 | 透传 (Forwarder) + 鉴权（可选启用）+ Docker | ⬜ 待办 | 计划 0.5 周 |
 | M4 | 更多 OFD 发票类型 | ⬜ 待办 | 当前仅识别 OFD 发票，不解析字段；航空行程单 OFD 已支持 |
@@ -37,7 +37,7 @@
 | 形态 | 入口 | 状态 |
 |---|---|---|
 | Python 库 | `from app.sdk import parse_invoice` | ✅ pipeline 全串通（PDF 普票） |
-| CLI | `efapiao parse <file>` / `efapiao serve` / `efapiao capabilities` | ✅ 真样本验证通过，退出码合约就位 |
+| CLI | `efapiao parse <file>` / `efapiao serve` / `efapiao capabilities` | ✅ 脱敏回归通过，退出码合约就位 |
 | HTTP 服务 | `uvicorn app.main:app` 或 `efapiao serve` | ✅ `/v1/health` `/v1/capabilities` `/v1/invoices/parse` 全可用 |
 
 ---
@@ -50,7 +50,7 @@
 | 路由 | `app/api/routes.py` | ✅ 已完成 | `health` / `capabilities` / `invoices/parse`；错误体返回 `engine` 便于上游分流 |
 | Pydantic schemas | `app/api/schemas.py` | ✅ 已完成 | §6 全字段：Party/Item/InvoiceData/ParseResponse/ErrorResponse/EngineStatus 等 |
 | **SDK 门面** | `app/sdk.py` | ✅ 已完成 | `parse_invoice()` 串通 detector → parser → adapter → extractor → normalizer；支持 `ocr_mode` |
-| **CLI** | `app/cli.py` | ✅ 已完成 | 真样本验证；异常→退出码（0/2/3/4/5）合约就位；支持 `--ocr-mode` |
+| **CLI** | `app/cli.py` | ✅ 已完成 | 脱敏回归；异常→退出码（0/2/3/4/5）合约就位；支持 `--ocr-mode` |
 | 自定义异常 | `app/errors.py` | ✅ 已完成 | InvalidInput / UnsupportedFormat / ParseFailed / RuleEngineUnhandled |
 | FormatDetector | `app/core/detector.py` | ✅ 已完成 | PDF / OFD(ZIP+OFD.xml) / JPEG / PNG / GIF magic bytes |
 | Normalizer | `app/core/normalizer.py` | ✅ 已完成 | 金额 Decimal→字符串两位、日期校验、§6 字段补 null |
@@ -67,7 +67,7 @@
 | Extractor: fallback | `app/extractors/fallback.py` | 🟡 最小可用 | 二维码兜底提取发票号 / 日期 / 金额 / 校验码 |
 | OCR vendor | `app/ocr/` | 🟡 接口已定 | 支持 CnOCR / 第三方 HTTP API / 腾讯云；CnOCR 为可选依赖 |
 | 配置 | `app/config.py` | ✅ 已完成 | 鉴权可选 / host / port 等环境变量 |
-| 测试 | `tests/` | ✅ 99 通过 / 1 skip | 单元 + manifest 真样本/OFD 集成 + HTTP 端到端 + OCR vendor + QR fallback + URL 安全 |
+| 测试 | `tests/` | ✅ 65 通过 / 0 skip | 单元 + 脱敏合成 PDF/OFD 集成 + HTTP/CLI 端到端 + OCR vendor + QR fallback + URL 安全 |
 | Docker | `Dockerfile` / `.dockerignore` | ✅ 已完成 | 含 libzbar0 系统依赖 |
 | 文档 | `DESIGN.md` / `README.md` / `AGENT_GUIDE.md` | ✅ 已完成 | DESIGN.md §12 已加部署形态 |
 | 开发样本 | `docs/sample/*.pdf` (本地) | ✅ 已整理 | 普票 ×22 / 专票 ×6 / 12306 ×12；含腾讯 OCR raw/compare report。**已 .gitignore，禁止入库** |
@@ -91,6 +91,9 @@
 ## 已完成（按日期倒序）
 
 ### 2026-05-21（M2 继续）
+- 测试套件全面改为脱敏合成数据源：移除 `tests/` 对 `docs/sample` 真实发票/OFD 的读取依赖，新增 `tests/fixtures/sanitized.py` 统一生成脱敏文本和最小 OFD 容器
+- 新增 CLI 回归测试、HTTP 鉴权/文件大小契约测试、OFD magic bytes 检测测试，以及测试套件策略测试，防止未来重新依赖 `docs/sample`
+- 脱敏集成覆盖数电普票、免税普票、跨行合计专票、bare-token 专票、12306 客票、OFD 航空行程单、OFD 发票识别不解析等关键分支
 - 新增纯规则模式 API 契约：`ocr_mode=disabled` 时不调用本地/在线 OCR，规则引擎无法处理时返回 `rule_unhandled` 与机器可读 `engine.ocr_required`
 - HTTP/CLI 成功与错误响应补充 `engine`：包含 `rule_engine`、`ocr_mode`、`ocr_enabled`、`ocr_used`、`ocr_required`、`ocr_vendor`
 - `/v1/capabilities` 补充 `parse_modes.ocr_mode`，文档说明无 OCR 部署、OCR 队列与人工队列的分流方式

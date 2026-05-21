@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-
-SAMPLE = Path(__file__).resolve().parents[1] / "docs" / "sample" / "普票1.pdf"
+from tests.fixtures import sanitized
 
 
 def test_parse_missing_file_returns_400():
@@ -30,13 +27,19 @@ def test_parse_garbage_returns_415():
     assert resp.json()["detail"]["code"] == "unsupported_format"
 
 
-def test_parse_real_pdf_returns_200():
-    if not SAMPLE.is_file():
-        pytest.skip("样本缺失")
+def test_parse_sanitized_pdf_returns_200(monkeypatch: pytest.MonkeyPatch):
+    from app.parsers.pdf_parser import PdfParser
+
+    monkeypatch.setattr(
+        PdfParser,
+        "_extract_text",
+        staticmethod(lambda content: sanitized.DIGITAL_GENERAL_TEXT),
+    )
+
     client = TestClient(app)
     resp = client.post(
         "/v1/invoices/parse",
-        files={"file": ("普票1.pdf", SAMPLE.read_bytes(), "application/pdf")},
+        files={"file": ("sanitized.pdf", b"%PDF-1.7 sanitized", "application/pdf")},
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -45,7 +48,7 @@ def test_parse_real_pdf_returns_200():
     assert body["document_type"] == "pdf-fapiao"
     assert body["invoice_type"] == "digital_general"
     assert body["data"]["document_type"] == "pdf-fapiao"
-    assert body["data"]["invoice_number"] == "26317000001791661472"
+    assert body["data"]["invoice_number"] == "26100000000000000001"
     assert body["data"]["amount_with_tax"] == "211.00"
     assert body["engine"]["rule_engine"] == "attempted"
     assert body["engine"]["ocr_mode"] == "auto"
