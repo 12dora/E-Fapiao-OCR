@@ -258,6 +258,8 @@ git push origin v0.1.1
 
 默认发布 `linux-x86_64`、`linux-arm64`、`darwin-arm64`、`windows-x86_64`，并生成 `SHA256SUMS`。
 
+Release 构建会排除开发工具、Uvicorn 热重载/WebSocket 扩展、Pillow 罕见图片格式插件等可选模块；PDF 文本抽取和渲染统一使用 `pypdfium2`，避免同时打包 `pdfminer/cryptography` 这类大依赖。
+
 ## 测试
 
 测试集使用脱敏合成数据，不依赖真实发票样本：

@@ -14,6 +14,74 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / "dist"
 BUILD = ROOT / "build"
+PYINSTALLER_EXCLUDES = [
+    # Development / REPL / formatting helpers.
+    "IPython",
+    "Pygments",
+    "ctags",
+    "mypy",
+    "pytest",
+    "rich",
+    "setuptools",
+    # Optional networking backends or CLIs not used by the service.
+    "h2",
+    "httpx._main",
+    "python_socks",
+    "socksio",
+    "trio",
+    "uvicorn.middleware.wsgi",
+    "uvicorn.protocols.websockets",
+    "uvicorn.supervisors",
+    "uvicorn.workers",
+    "watchfiles",
+    "websockets",
+    "wsproto",
+    # Uvicorn standard extras. The binary uses regular asyncio/h11.
+    "httptools",
+    "uvloop",
+    # Optional data/science/display helpers.
+    "defusedxml",
+    "numpy",
+    "pandas",
+    "pygame",
+    "tabulate",
+    # Pillow image formats that are not needed for QR/image OCR input.
+    "PIL.AvifImagePlugin",
+    "PIL.BlpImagePlugin",
+    "PIL.BufrStubImagePlugin",
+    "PIL.CurImagePlugin",
+    "PIL.DcxImagePlugin",
+    "PIL.EpsImagePlugin",
+    "PIL.FitsImagePlugin",
+    "PIL.FliImagePlugin",
+    "PIL.FpxImagePlugin",
+    "PIL.GbrImagePlugin",
+    "PIL.GribStubImagePlugin",
+    "PIL.Hdf5StubImagePlugin",
+    "PIL.IcnsImagePlugin",
+    "PIL.ImImagePlugin",
+    "PIL.ImtImagePlugin",
+    "PIL.IptcImagePlugin",
+    "PIL.MicImagePlugin",
+    "PIL.MpoImagePlugin",
+    "PIL.MspImagePlugin",
+    "PIL.PalmImagePlugin",
+    "PIL.PcdImagePlugin",
+    "PIL.PcxImagePlugin",
+    "PIL.PdfImagePlugin",
+    "PIL.PixarImagePlugin",
+    "PIL.PsdImagePlugin",
+    "PIL.SgiImagePlugin",
+    "PIL.SpiderImagePlugin",
+    "PIL.SunImagePlugin",
+    "PIL.TgaImagePlugin",
+    "PIL.TiffImagePlugin",
+    "PIL.WebPImagePlugin",
+    "PIL.WmfImagePlugin",
+    "PIL.XVThumbImagePlugin",
+    "PIL.XbmImagePlugin",
+    "PIL.XpmImagePlugin",
+]
 
 
 def main() -> int:
@@ -45,8 +113,10 @@ def main() -> int:
         str(BUILD / "pyinstaller"),
         "--specpath",
         str(BUILD / "pyinstaller"),
-        str(ROOT / "app" / "cli.py"),
     ]
+    for module in PYINSTALLER_EXCLUDES:
+        cmd.extend(["--exclude-module", module])
+    cmd.append(str(ROOT / "app" / "cli.py"))
     subprocess.run(cmd, cwd=ROOT, check=True)
 
     binary = dist_dir / binary_name

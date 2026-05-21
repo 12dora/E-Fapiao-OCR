@@ -1,7 +1,7 @@
 """PdfParser —— MVP 主力解析器。
 
 策略（按优先级降级）：
-  1. 文本层抽取 (pdfplumber) → VersionAdapter 识别版式 → 对应 extractor
+  1. 文本层抽取 (pypdfium2) → VersionAdapter 识别版式 → 对应 extractor
   2. 文本层失败 → pyzbar 解析二维码 → 兜底 extractor
   3. 全部失败 → 抛 ParseFailed
 
@@ -13,7 +13,7 @@ from __future__ import annotations
 from io import BytesIO
 from typing import Any
 
-import pdfplumber
+import pypdfium2 as pdfium
 from PIL import Image
 
 from app.config import settings
@@ -49,13 +49,21 @@ class PdfParser(Parser):
 
     @staticmethod
     def _extract_text(content: bytes) -> str:
-        with pdfplumber.open(BytesIO(content)) as pdf:
+        pdf = pdfium.PdfDocument(BytesIO(content))
+        try:
             parts: list[str] = []
-            for page in pdf.pages:
-                t = page.extract_text() or ""
-                if t:
-                    parts.append(t)
+            for page in pdf:
+                textpage = page.get_textpage()
+                try:
+                    text = textpage.get_text_range() or ""
+                    if text:
+                        parts.append(text)
+                finally:
+                    textpage.close()
+                    page.close()
             return "\n".join(parts)
+        finally:
+            pdf.close()
 
     @staticmethod
     def _extract_qr_payload(content: bytes) -> str | None:
@@ -64,9 +72,11 @@ class PdfParser(Parser):
         except Exception:
             return None
 
-        with pdfplumber.open(BytesIO(content)) as pdf:
-            for page in pdf.pages:
-                image = page.to_image(resolution=160).original
+        pdf = pdfium.PdfDocument(BytesIO(content))
+        try:
+            for page in pdf:
+                image = page.render(scale=160 / 72).to_pil()
+                page.close()
                 for candidate in _qr_image_candidates(image):
                     decoded = decode(candidate)
                     for item in decoded:
@@ -76,7 +86,9 @@ class PdfParser(Parser):
                             payload = item.data.decode("gb18030", errors="ignore").strip()
                         if payload:
                             return payload
-        return None
+            return None
+        finally:
+            pdf.close()
 
 
 def _qr_image_candidates(image: Image.Image) -> list[Image.Image]:
