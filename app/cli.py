@@ -90,6 +90,7 @@ def _cmd_parse(args: argparse.Namespace) -> int:
             ocr_mode=args.ocr_mode,
             ocr_required=e.ocr_required,
             ocr_used=e.ocr_used,
+            ocr_vendor=_configured_ocr_vendor(),
             document_type=e.document_type,
             invoice_type=e.invoice_type,
         )
@@ -162,6 +163,13 @@ def _engine_status(
         "ocr_required": ocr_required,
         "ocr_vendor": ocr_vendor,
     }
+
+
+def _configured_ocr_vendor() -> str | None:
+    vendor = settings.ocr_vendor.lower()
+    if vendor in {"", "none", "disabled"}:
+        return None
+    return settings.ocr_vendor
 
 
 def build_parser() -> argparse.ArgumentParser:

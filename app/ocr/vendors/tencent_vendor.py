@@ -190,7 +190,8 @@ def _sign(key: bytes, msg: str) -> bytes:
 
 
 def _parse_response(body: dict[str, Any]) -> OcrResult:
-    response = body.get("Response") if isinstance(body.get("Response"), dict) else body
+    maybe_response = body.get("Response")
+    response = maybe_response if isinstance(maybe_response, dict) else body
     lines = _parse_items(response.get("MixedInvoiceItems"))
     if not lines:
         lines = _parse_items(response.get("SingleInvoiceInfos"))

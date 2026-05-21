@@ -30,7 +30,23 @@ def test_pdf_parser_reports_rule_engine_unhandled_when_text_and_qr_missing(monke
         PdfParser().parse(b"fake pdf bytes", ocr_mode="disabled")
     except RuleEngineUnhandled as e:
         assert e.file_format == "pdf"
+        assert e.document_type == "pdf-fapiao"
         assert e.ocr_required is True
         assert "规则引擎无法解析" in str(e)
     else:
         raise AssertionError("PDF 文本层与二维码都缺失时应返回规则引擎未覆盖语义")
+
+
+def test_pdf_parser_reports_low_quality_text_as_ocr_required(monkeypatch):
+    low_quality = "\x01\x04\x05\x06\x07\x08\t\n\x0b\r\n" * 20
+    monkeypatch.setattr(PdfParser, "_extract_text", staticmethod(lambda content: low_quality))
+    monkeypatch.setattr(PdfParser, "_extract_qr_payload", staticmethod(lambda content: None))
+
+    try:
+        PdfParser().parse(b"fake pdf bytes", ocr_mode="auto")
+    except RuleEngineUnhandled as e:
+        assert e.document_type == "pdf-fapiao"
+        assert e.ocr_required is True
+        assert "当前未配置 OCR vendor" in str(e)
+    else:
+        raise AssertionError("PDF 低质量文本层应返回 OCR 需求语义")

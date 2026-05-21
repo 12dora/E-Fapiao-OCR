@@ -13,11 +13,11 @@ from __future__ import annotations
 from io import BytesIO
 from typing import Any
 
-import pypdfium2 as pdfium
+import pypdfium2 as pdfium  # type: ignore[import-untyped]
 from PIL import Image
 
 from app.config import settings
-from app.errors import RuleEngineUnhandled
+from app.errors import ParseFailed, RuleEngineUnhandled
 from app.extractors.version_adapter import select_extractor
 from app.parsers.base import Parser
 
@@ -27,14 +27,10 @@ class PdfParser(Parser):
         # 1) 文本层抽取
         text = self._extract_text(content)
 
-        if not text or len(text.strip()) < 20:
+        if _is_unusable_text_layer(text):
             qr_payload = self._extract_qr_payload(content)
             if not qr_payload:
-                raise RuleEngineUnhandled(
-                    _pdf_ocr_required_message(ocr_mode),
-                    file_format="pdf",
-                    ocr_required=True,
-                )
+                _raise_pdf_rule_unhandled(ocr_mode)
             extractor = select_extractor("", qr_payload=qr_payload)
             raw = extractor("")
             raw.setdefault("source", {})
@@ -42,7 +38,12 @@ class PdfParser(Parser):
             return raw
 
         extractor = select_extractor(text)
-        raw = extractor(text)
+        try:
+            raw = extractor(text)
+        except ParseFailed as e:
+            if _looks_like_invoice(text):
+                _raise_pdf_rule_unhandled(ocr_mode, reason=str(e))
+            raise
         raw.setdefault("source", {})
         raw["source"]["extracted_by"] = "text_layer"
         return raw
@@ -68,7 +69,7 @@ class PdfParser(Parser):
     @staticmethod
     def _extract_qr_payload(content: bytes) -> str | None:
         try:
-            from pyzbar.pyzbar import decode
+            from pyzbar.pyzbar import decode  # type: ignore[import-untyped]
         except Exception:
             return None
 
@@ -102,9 +103,56 @@ def _qr_image_candidates(image: Image.Image) -> list[Image.Image]:
     ]
 
 
+def _is_unusable_text_layer(text: str) -> bool:
+    stripped = text.strip()
+    if len(stripped) < 20:
+        return True
+
+    meaningful = sum(
+        1
+        for char in stripped
+        if char.isalnum() or "\u4e00" <= char <= "\u9fff" or char in "¥￥.:：,，()（）%-_*"
+    )
+    c0_control = sum(1 for char in stripped if ord(char) < 32)
+    length = max(len(stripped), 1)
+    return (
+        meaningful / length < 0.35
+        or c0_control / length > 0.25
+        or (not _looks_like_invoice(stripped) and c0_control / length > 0.1)
+    )
+
+
+def _looks_like_invoice(text: str) -> bool:
+    compact = "".join(text.split())
+    markers = (
+        "发票",
+        "发票代码",
+        "发票号码",
+        "价税合计",
+        "货物或应税劳务",
+        "购买方",
+        "销售方",
+        "销货方",
+    )
+    return any(marker in compact for marker in markers)
+
+
+def _raise_pdf_rule_unhandled(ocr_mode: str, *, reason: str | None = None) -> None:
+    message = _pdf_ocr_required_message(ocr_mode)
+    if reason:
+        message = f"{message}；{reason}"
+    raise RuleEngineUnhandled(
+        message,
+        file_format="pdf",
+        document_type="pdf-fapiao",
+        ocr_required=True,
+    )
+
+
 def _pdf_ocr_required_message(ocr_mode: str) -> str:
+    base = "规则引擎无法解析该 PDF：文本层不可用或版式未覆盖且未找到二维码"
     if ocr_mode == "disabled":
-        return "规则引擎无法解析该 PDF：文本层内容过少且未找到二维码；本次调用已禁用 OCR"
+        return f"{base}；本次调用已禁用 OCR"
     if not settings.image_ocr_enabled:
-        return "规则引擎无法解析该 PDF：文本层内容过少且未找到二维码；当前未配置 OCR vendor"
-    return "规则引擎无法解析该 PDF：文本层内容过少且未找到二维码；需要先将页面渲染为图片后走 OCR"
+        return f"{base}；当前未配置 OCR vendor"
+    return f"{base}；需要下游 OCR 队列处理并确认 OCR 服务可用"
