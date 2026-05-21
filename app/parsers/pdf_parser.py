@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+import re
+import zlib
 from io import BytesIO
 from typing import Any
 
@@ -26,8 +28,14 @@ class PdfParser(Parser):
     def parse(self, content: bytes, *, ocr_mode: str = "auto") -> dict[str, Any]:
         # 1) 文本层抽取
         text = self._extract_text(content)
+        embedded_fields = _extract_embedded_invoice_fields(content)
 
         if _is_unusable_text_layer(text):
+            if embedded_fields:
+                raw = _raw_from_embedded_invoice_fields(embedded_fields, text)
+                raw.setdefault("source", {})
+                raw["source"]["extracted_by"] = "text_layer"
+                return raw
             qr_payload = self._extract_qr_payload(content)
             if not qr_payload:
                 _raise_pdf_rule_unhandled(ocr_mode)
@@ -135,6 +143,114 @@ def _looks_like_invoice(text: str) -> bool:
         "销货方",
     )
     return any(marker in compact for marker in markers)
+
+
+def _extract_embedded_invoice_fields(content: bytes) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    haystacks = [content]
+
+    for stream in _flate_streams(content):
+        haystacks.append(stream)
+
+    field_names = (
+        "InvoiceNumber",
+        "InvoiceCode",
+        "IssueTime",
+        "TotalAmWithoutTax",
+        "TotalTaxAm",
+        "TotalTax-includedAmount",
+        "BuyerIdNum",
+        "SellerIdNum",
+        "BuyerName",
+        "SellerName",
+    )
+    for data in haystacks:
+        for name in field_names:
+            if name in fields:
+                continue
+            value = _pdf_name_literal(data, name)
+            if value:
+                fields[name] = value
+
+    required = {"InvoiceNumber", "IssueTime", "TotalTax-includedAmount"}
+    if required & fields.keys():
+        return fields
+    return {}
+
+
+def _flate_streams(content: bytes) -> list[bytes]:
+    streams: list[bytes] = []
+    for match in re.finditer(rb"<<.*?/Filter\s*/FlateDecode.*?>>\s*stream\r?\n", content, re.S):
+        start = match.end()
+        end = content.find(b"endstream", start)
+        if end < 0:
+            continue
+        data = content[start:end].strip(b"\r\n")
+        try:
+            streams.append(zlib.decompress(data))
+        except zlib.error:
+            continue
+    return streams
+
+
+def _pdf_name_literal(data: bytes, name: str) -> str | None:
+    pattern = rb"/" + re.escape(name.encode("ascii")) + rb"\((.*?)\)"
+    match = re.search(pattern, data, re.S)
+    if not match:
+        return None
+    return _decode_pdf_literal(match.group(1))
+
+
+def _decode_pdf_literal(value: bytes) -> str | None:
+    if value.startswith(b"\xfe\xff"):
+        text = value[2:].decode("utf-16-be", errors="ignore")
+    elif value.startswith(b"\xff\xfe"):
+        text = value[2:].decode("utf-16-le", errors="ignore")
+    else:
+        text = value.decode("utf-8", errors="ignore") or value.decode("gb18030", errors="ignore")
+    text = text.replace(r"\(", "(").replace(r"\)", ")").replace(r"\\", "\\").strip()
+    return text or None
+
+
+def _raw_from_embedded_invoice_fields(fields: dict[str, str], text: str) -> dict[str, Any]:
+    invoice_type = "digital_special" if "增值税专用发票" in text else "digital_general"
+    return {
+        "invoice_type": invoice_type,
+        "invoice_number": fields.get("InvoiceNumber"),
+        "invoice_code": fields.get("InvoiceCode"),
+        "issue_date": _normalize_embedded_date(fields.get("IssueTime")),
+        "seller": {
+            "name": fields.get("SellerName"),
+            "tax_id": fields.get("SellerIdNum"),
+            "address": None,
+            "bank": None,
+        },
+        "buyer": {
+            "name": fields.get("BuyerName"),
+            "tax_id": fields.get("BuyerIdNum"),
+            "address": None,
+            "bank": None,
+        },
+        "items": [],
+        "amount_without_tax": fields.get("TotalAmWithoutTax"),
+        "tax_amount": fields.get("TotalTaxAm"),
+        "amount_with_tax": fields.get("TotalTax-includedAmount"),
+        "amount_in_words": None,
+        "remark": None,
+        "checksum": None,
+        "extra": {},
+        "source": {"format": "pdf", "parser_version": "0.1.0"},
+    }
+
+
+def _normalize_embedded_date(value: str | None) -> str | None:
+    if not value:
+        return None
+    match = re.search(r"(20\d{2})\D*(\d{1,2})\D*(\d{1,2})", value)
+    if not match:
+        return value
+    year, month, day = match.groups()
+    return f"{year}-{int(month):02d}-{int(day):02d}"
 
 
 def _raise_pdf_rule_unhandled(ocr_mode: str, *, reason: str | None = None) -> None:

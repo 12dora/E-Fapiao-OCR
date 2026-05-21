@@ -6,6 +6,8 @@ OFD 容器，不依赖本地真实发票。
 
 from __future__ import annotations
 
+import zlib
+
 import pytest
 
 from app.core.normalizer import normalize
@@ -145,3 +147,65 @@ def test_pdf_parser_pipeline_uses_sanitized_text(monkeypatch: pytest.MonkeyPatch
     assert data["invoice_type"] == "digital_general"
     assert data["invoice_number"] == "26100000000000000001"
     assert data["source"]["extracted_by"] == "text_layer"
+
+
+def test_pdf_parser_uses_embedded_fields_when_text_layer_has_broken_font_map() -> None:
+    content = _pdf_with_embedded_invoice_fields()
+    data = parse_invoice(content, ocr_mode="disabled")
+
+    assert data["document_type"] == "pdf-fapiao"
+    assert data["invoice_type"] == "digital_general"
+    assert data["invoice_number"] == "26317000000010839783"
+    assert data["issue_date"] == "2026-03-09"
+    assert data["amount_without_tax"] == "7963.72"
+    assert data["tax_amount"] == "1035.28"
+    assert data["amount_with_tax"] == "8999.00"
+    assert data["buyer"]["tax_id"] == "91330600597214350R"
+    assert data["seller"]["tax_id"] == "91310106MA1FYMRL1D"
+
+
+def _pdf_with_embedded_invoice_fields() -> bytes:
+    private = (
+        b"<</Creator(gp-template)"
+        b"/InvoiceNumber(26317000000010839783)"
+        b"/IssueTime(\xfe\xff\x002\x000\x002\x006^t\x000\x003g\x08\x000\x009e\xe5)"
+        b"/TotalAmWithoutTax(7963.72)"
+        b"/TotalTaxAm(1035.28)"
+        b"/TotalTax-includedAmount(8999.00)"
+        b"/BuyerIdNum(91330600597214350R)"
+        b"/SellerIdNum(91310106MA1FYMRL1D)>>"
+    )
+    compressed = zlib.compress(private)
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 120] "
+        b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Length 4 >>\nstream\njunk\nendstream",
+        b"<< /Length "
+        + str(len(compressed)).encode("ascii")
+        + b" /Filter /FlateDecode >>\nstream\n"
+        + compressed
+        + b"\nendstream",
+    ]
+    stream = b"BT /F1 12 Tf 30 80 Td (\x01\x02\x03\x04\x05) Tj ET"
+    objects[4] = (
+        f"<< /Length {len(stream)} >>\nstream\n".encode("ascii") + stream + b"\nendstream"
+    )
+
+    chunks = [b"%PDF-1.4\n"]
+    offsets = [0]
+    for i, obj in enumerate(objects, start=1):
+        offsets.append(sum(len(chunk) for chunk in chunks))
+        chunks.append(f"{i} 0 obj\n".encode("ascii") + obj + b"\nendobj\n")
+    xref_offset = sum(len(chunk) for chunk in chunks)
+    chunks.append(f"xref\n0 {len(objects) + 1}\n".encode("ascii"))
+    chunks.append(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        chunks.append(f"{offset:010d} 00000 n \n".encode("ascii"))
+    chunks.append(
+        f"trailer << /Size {len(objects) + 1} /Root 1 0 R >>\n"
+        f"startxref\n{xref_offset}\n%%EOF\n".encode("ascii")
+    )
+    return b"".join(chunks)
