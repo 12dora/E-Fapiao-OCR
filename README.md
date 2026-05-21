@@ -118,6 +118,31 @@ with tencent_ocr_credentials(secret_id="AKID...", secret_key="...", token=None):
 - API Key 鉴权
 - OCR vendor 接口预留：CnOCR / 第三方 HTTP API / 腾讯云，默认关闭
 
+## 二进制发布
+
+项目支持把 CLI/HTTP 服务入口编译为单文件二进制：
+
+```bash
+pip install -e ".[build-bin]"
+python scripts/build_binary.py --version v0.1.0
+```
+
+产物位于 `dist/`，命名遵循：
+
+```text
+efapiao-<semver>-<os>-<arch>.tar.gz
+efapiao-<semver>-windows-x86_64.zip
+```
+
+GitHub Release 使用 SemVer tag 触发，例如：
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Release workflow 会构建 `linux-x86_64`、`linux-arm64`、`darwin-x86_64`、`darwin-arm64`、`windows-x86_64`，并上传 `SHA256SUMS`。默认二进制包含规则引擎与 HTTP/腾讯 OCR vendor；本地 CnOCR 模型不打入默认 release 产物。
+
 ## 不做
 
 - 发票验真、持久化、报销审批、用户体系、前端 UI
