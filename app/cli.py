@@ -22,6 +22,15 @@ from app.config import settings
 from app.errors import InvalidInput, ParseFailed, RuleEngineUnhandled, UnsupportedFormat
 
 
+def _configure_stdio() -> None:
+    """Prefer UTF-8 JSON output on Windows consoles and frozen binaries."""
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name)
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure:
+            reconfigure(encoding="utf-8", errors="replace")
+
+
 def _print_error(
     code: str,
     message: str,
@@ -188,6 +197,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _configure_stdio()
     parser = build_parser()
     args = parser.parse_args(argv)
     return args.func(args)
