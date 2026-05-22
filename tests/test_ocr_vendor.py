@@ -1,7 +1,11 @@
+import sys
+import types
+
 from app.errors import ParseFailed
 from app.ocr import tencent_ocr_credentials
 from app.ocr.base import OcrResult, OcrTextLine
 from app.ocr.factory import create_ocr_vendor
+from app.ocr.vendors import cnocr_vendor
 from app.ocr.vendors.http_vendor import HttpOcrVendor, _parse_payload
 from app.ocr.vendors.tencent_vendor import (
     _build_headers,
@@ -20,6 +24,65 @@ def test_ocr_vendor_disabled_by_default():
         assert "未启用" in str(e)
     else:
         raise AssertionError("默认未配置 OCR vendor 时应返回 501 语义")
+
+
+def test_cnocr_vendor_uses_lightweight_doc_model(monkeypatch):
+    calls = {}
+
+    class FakeSettings:
+        cnocr_model_profile = "invoice-lite"
+        cnocr_det_model_name = "ch_PP-OCRv5_det"
+        cnocr_rec_model_name = "doc-densenet_lite_136-gru"
+        cnocr_det_model_backend = "onnx"
+        cnocr_rec_model_backend = "onnx"
+
+    class FakeCnOcr:
+        def __init__(self, **kwargs):
+            calls["init"] = kwargs
+
+        def ocr(self, image):
+            calls["image_mode"] = image.mode
+            return [
+                {"text": "电子发票(普通发票)", "score": "0.99", "position": [[0, 0], [1, 0]]},
+                ([[0, 10], [1, 10]], ("发票号码:26317000001791661472", 0.98)),
+            ]
+
+    class FakeImage:
+        mode = "L"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def convert(self, mode):
+            self.mode = mode
+            return self
+
+    fake_cnocr_module = types.SimpleNamespace(CnOcr=FakeCnOcr)
+    monkeypatch.setitem(sys.modules, "cnocr", fake_cnocr_module)
+    monkeypatch.setattr(cnocr_vendor, "settings", FakeSettings())
+    monkeypatch.setattr(cnocr_vendor.Image, "open", lambda _: FakeImage())
+
+    vendor = cnocr_vendor.CnOcrVendor()
+    result = vendor.recognize(b"fake image bytes")
+
+    assert calls["init"] == {
+        "det_model_name": "ch_PP-OCRv5_det",
+        "rec_model_name": "doc-densenet_lite_136-gru",
+        "det_model_backend": "onnx",
+        "rec_model_backend": "onnx",
+    }
+    assert calls["image_mode"] == "RGB"
+    assert vendor.rec_model_name == "doc-densenet_lite_136-gru"
+    assert vendor.model_profile == "invoice-lite"
+    assert result.vendor == "cnocr"
+    assert [line.text for line in result.lines] == [
+        "电子发票(普通发票)",
+        "发票号码:26317000001791661472",
+    ]
+    assert result.lines[0].score == 0.99
 
 
 def test_http_vendor_payload_text():

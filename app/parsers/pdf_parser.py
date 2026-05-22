@@ -21,6 +21,7 @@ from PIL import Image
 from app.config import settings
 from app.errors import ParseFailed, RuleEngineUnhandled
 from app.extractors.version_adapter import select_extractor
+from app.ocr import create_ocr_vendor
 from app.parsers.base import Parser
 
 
@@ -37,6 +38,8 @@ class PdfParser(Parser):
                 raw["source"]["extracted_by"] = "text_layer"
                 return raw
             qr_payload = self._extract_qr_payload(content)
+            if not qr_payload and ocr_mode != "disabled" and settings.image_ocr_enabled:
+                return self._parse_with_ocr(content)
             if not qr_payload:
                 _raise_pdf_rule_unhandled(ocr_mode)
             extractor = select_extractor("", qr_payload=qr_payload)
@@ -99,6 +102,19 @@ class PdfParser(Parser):
         finally:
             pdf.close()
 
+    @staticmethod
+    def _parse_with_ocr(content: bytes) -> dict[str, Any]:
+        vendor = create_ocr_vendor()
+        text = _ocr_pdf_pages(content, vendor)
+        if not text or len(text.strip()) < 20:
+            raise ParseFailed("PDF OCR 文本内容过少，无法解析发票字段")
+        extractor = select_extractor(text)
+        raw = extractor(text)
+        raw.setdefault("source", {})
+        raw["source"]["extracted_by"] = "ocr"
+        raw["source"]["ocr_vendor"] = vendor.name
+        return raw
+
 
 def _qr_image_candidates(image: Image.Image) -> list[Image.Image]:
     width, height = image.size
@@ -109,6 +125,23 @@ def _qr_image_candidates(image: Image.Image) -> list[Image.Image]:
         image.crop((left, top, width, height)),
         image.convert("L"),
     ]
+
+
+def _ocr_pdf_pages(content: bytes, vendor: Any) -> str:
+    pdf = pdfium.PdfDocument(BytesIO(content))
+    try:
+        texts: list[str] = []
+        for page in pdf:
+            image = page.render(scale=200 / 72).to_pil()
+            page.close()
+            with BytesIO() as buffer:
+                image.save(buffer, format="PNG")
+                result = vendor.recognize(buffer.getvalue())
+            if result.text:
+                texts.append(result.text)
+        return "\n".join(texts)
+    finally:
+        pdf.close()
 
 
 def _is_unusable_text_layer(text: str) -> bool:

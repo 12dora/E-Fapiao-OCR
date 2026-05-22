@@ -8,8 +8,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-# 同时容忍 ¥ ￥ ´（某些 PDF 字体把 ¥ 渲染为 ´）
-_YUAN = r"[¥￥´]"
+# 同时容忍 ¥ ￥ ´（某些 PDF 字体把 ¥ 渲染为 ´）与 OCR 常见的 Y
+_YUAN = r"[¥￥´Y]"
 COMPANY_TAIL = r"(?:公司|酒店|医院|学校|集团|分公司|事务所|工厂|厂|店|社|中心|餐厅|饭店|个体工商户)"
 
 INVOICE_NO = re.compile(r"发\s*票\s*号码[:：\s]*([0-9A-Za-z]{8,24})")
@@ -258,6 +258,9 @@ def extract_totals(text: str) -> tuple[str | None, str | None]:
         if m3:
             tax_amount = None if m3.group(2).startswith("*") else m3.group(2)
             return m3.group(1), tax_amount
+    split_total = _extract_split_total(text)
+    if split_total:
+        return split_total
     return None, None
 
 
@@ -317,7 +320,8 @@ def extract_items(text: str) -> list[dict[str, Any]]:
             end_idx = i
             break
     if header_idx is None or end_idx is None:
-        return _extract_legacy_items(lines)
+        legacy_items = _extract_legacy_items(lines)
+        return legacy_items or _extract_split_column_items(lines) or _extract_toll_items(lines)
 
     items: list[dict[str, Any]] = []
     pending_name_parts: list[str] = []
@@ -365,6 +369,9 @@ def extract_items(text: str) -> list[dict[str, Any]]:
             pending_name_parts.append(line)
     if items:
         return items
+    split_items = _extract_split_column_items(lines)
+    if split_items:
+        return split_items
     tail_items = _extract_tail_items(lines)
     return tail_items or _extract_toll_items(lines)
 
@@ -519,6 +526,58 @@ def _extract_toll_items(lines: list[str]) -> list[dict[str, Any]]:
             }
         )
     return items
+
+
+def _extract_split_column_items(lines: list[str]) -> list[dict[str, Any]]:
+    compact_lines = ["".join(line.split()) for line in lines]
+    try:
+        header_idx = compact_lines.index("项目名称")
+    except ValueError:
+        return []
+
+    end_idx = next(
+        (i for i in range(header_idx + 1, len(lines)) if compact_lines[i] in {"合计", "合"}),
+        len(lines),
+    )
+    body = [line.strip() for line in lines[header_idx + 1 : end_idx] if line.strip()]
+    names = [line for line in body if line.startswith("*")]
+    amounts = [
+        match.group(1)
+        for line in body
+        if (match := re.fullmatch(rf"{_YUAN}?\s*(-?\d+\.\d{{2}})", line))
+    ]
+    rates = [line for line in body if re.fullmatch(r"\d{1,2}%|不征税|免税|零税率|\*", line)]
+    if not names or not amounts:
+        return []
+
+    tax_amount = amounts[1] if len(amounts) > 1 else None
+    return [
+        {
+            "name": names[0],
+            "spec": None,
+            "unit": None,
+            "quantity": None,
+            "unit_price": None,
+            "amount": amounts[0],
+            "tax_rate": rates[0] if rates else None,
+            "tax_amount": tax_amount,
+        }
+    ]
+
+
+def _extract_split_total(text: str) -> tuple[str | None, str | None] | None:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    for idx in range(len(lines) - 3):
+        if lines[idx] != "合" or lines[idx + 1] != "计":
+            continue
+        amounts: list[str] = []
+        for candidate in lines[idx + 2 : idx + 8]:
+            m = re.fullmatch(rf"{_YUAN}?\s*(-?[0-9.]+)", candidate)
+            if m:
+                amounts.append(m.group(1))
+            if len(amounts) == 2:
+                return amounts[0], amounts[1]
+    return None
 
 
 def _standalone_price_tax_amount(text: str) -> str | None:
