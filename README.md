@@ -300,6 +300,7 @@ git push origin v0.1.3
 每个平台各有 `lite` 与 `with-model` 两个包，并生成 `SHA256SUMS`。`with-model`
 包内置 `invoice-lite` CnOCR ONNX 模型，设置 `EFAPIAO_OCR_VENDOR=cnocr` 后可离线使用；
 `lite` 包不包含 CnOCR 依赖或模型，适合仅规则解析、HTTP OCR 或腾讯云 OCR 场景。
+`with-model` 包中的模型位于二进制旁边的 `models/` 目录，请保持解压后的目录结构不变。
 
 Release 构建会排除开发工具、Uvicorn 热重载/WebSocket 扩展、Pillow 罕见图片格式插件等可选模块；PDF 文本抽取和渲染统一使用 `pypdfium2`，避免同时打包 `pdfminer/cryptography` 这类大依赖。
 

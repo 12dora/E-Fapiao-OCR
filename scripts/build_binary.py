@@ -95,12 +95,11 @@ def main() -> int:
     work_name = f"efapiao-{version}-{target}-{artifact_flavor}"
     dist_dir = DIST / work_name
     archive_base = DIST / work_name
-    model_data: list[tuple[Path, str]] = []
 
     _ensure_pyinstaller()
     if args.bundle_cnocr_model:
         _ensure_cnocr()
-        model_data = _prepare_cnocr_model_bundle(args.cnocr_model_profile)
+        _prepare_cnocr_model_bundle(args.cnocr_model_profile)
     shutil.rmtree(dist_dir, ignore_errors=True)
     (BUILD / "pyinstaller").mkdir(parents=True, exist_ok=True)
     DIST.mkdir(exist_ok=True)
@@ -125,8 +124,6 @@ def main() -> int:
         "--hidden-import",
         "app.main",
     ]
-    for src, dest in model_data:
-        cmd.extend(["--add-data", f"{src}{os.pathsep}{dest}"])
     if args.bundle_cnocr_model:
         for module in (
             "cnocr",
