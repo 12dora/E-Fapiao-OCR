@@ -42,11 +42,11 @@ TAX_ID = re.compile(
 )
 # "合 计 ¥199.06 ¥11.94"  或  "合 计 ¥199.06 *"
 TOTAL_LINE_INLINE = re.compile(
-    rf"合\s*计\s*{_YUAN}\s*([0-9.\-]+)\s+(?:{_YUAN}\s*([0-9.\-]+)|\*)"
+    rf"合\s*计\s*{_YUAN}\s*([0-9.\-]+)\s+(?:{_YUAN}\s*([0-9.\-]+)|[*＊]+)"
 )
 # 专票2 这种 "合 计\n¥984.08 ¥127.92"（标签与金额跨行）
 TOTAL_PAIR_LINE = re.compile(
-    rf"^{_YUAN}\s*([0-9.\-]+)\s+(?:{_YUAN}\s*([0-9.\-]+)|\*)\s*$",
+    rf"^{_YUAN}\s*([0-9.\-]+)\s+(?:{_YUAN}\s*([0-9.\-]+)|[*＊]+)\s*$",
     re.MULTILINE,
 )
 LEGACY_AMOUNT_PAIR_LINE = re.compile(
@@ -75,6 +75,7 @@ GENERAL_ETICKET_ITEM_TAIL = re.compile(
 BARE_INV_NO = re.compile(r"(?<!\d)(\d{20})(?!\d)")
 BARE_DATE = re.compile(r"(\d{4})年(\d{1,2})月(\d{1,2})日")
 BARE_TAX_PAIR = re.compile(r"^\s*([A-Z0-9]{15,20})\s+([A-Z0-9]{15,20})\s*$", re.MULTILINE)
+BARE_TAX_ID = re.compile(r"^[A-Z0-9]{15,20}$")
 # 整行两个主体名称（用空白分隔），用于红章/水印版式标签抽不出时兜底。
 BARE_NAME_PAIR = re.compile(
     rf"^\s*([一-龥A-Za-z0-9()（）]{{4,}}{COMPANY_TAIL})\s+"
@@ -82,6 +83,28 @@ BARE_NAME_PAIR = re.compile(
     re.MULTILINE,
 )
 BARE_COMPANY_NAME = re.compile(rf"([一-龥A-Za-z0-9()（）]{{4,}}{COMPANY_TAIL})")
+FLAT_PRICE_TAX_LINE = re.compile(
+    rf"([零壹贰叁肆伍陆柒捌玖拾佰仟万亿圆元角分整]+)\s+.*?{_YUAN}\s*(-?[0-9.]+)"
+)
+TOLL_TOTAL = re.compile(
+    r"(?<!\d)(-?\d+\.\d{2})\s+(?:\d{1,2}%|不征税|免税|零税率)\s+(-?\d+\.\d{2}|[*＊]+)(?!\d)"
+)
+TOLL_ITEM = re.compile(
+    r"(?P<name>\*[^\s]*通行费)\s+"
+    r"(?P<plate>[^\s]+)\s+"
+    r"(?P<vehicle>[^\s]+)\s+"
+    r"(?P<date>\d{8})\s+"
+    r"(?P<amount>-?\d+\.\d{2})\s+"
+    r"(?P<rate>\d{1,2}%|不征税|免税|零税率)\s+"
+    r"(?P<tax>-?\d+\.\d{2}|[*＊]+)"
+)
+TAIL_LAYOUT_PARTIES = re.compile(
+    rf"(?<!\d)(?:23|24|25|26)\d{{18}}(?!\d)\s+"
+    r"20\d{2}年\d{1,2}月\d{1,2}日\s+"
+    r"(?P<buyer_tax>[A-Z0-9]{15,20})\s+"
+    rf"(?P<seller_name>[一-龥A-Za-z0-9()（）]{{4,}}{COMPANY_TAIL})\s*"
+    r"(?P<seller_tax>[A-Z0-9]{15,20})"
+)
 
 
 def half_width(s: str) -> str:
@@ -142,6 +165,9 @@ def _legacy_invoice_no_from_lines(text: str) -> str | None:
             for candidate in lines[i + 1 : i + 15]:
                 if re.search(r"机器编号|校\s*验\s*码|开户行|账号", candidate):
                     continue
+                m20 = re.search(r"(?<!\d)((?:23|24|25|26)\d{18})(?!\d)", candidate)
+                if m20:
+                    return m20.group(1)
                 matches = re.findall(r"(?<!\d)(\d{8})(?!\d)", candidate)
                 if matches:
                     return matches[0]
@@ -178,6 +204,7 @@ def extract_parties(text: str) -> tuple[dict, dict]:
         }
 
     buyer, seller = party(0), party(1)
+    apply_tail_layout_party_fallback(text, buyer, seller)
     apply_bare_party_fallback(text, buyer, seller)
     return buyer, seller
 
@@ -225,6 +252,12 @@ def extract_totals(text: str) -> tuple[str | None, str | None]:
         m2 = TOTAL_PAIR_LINE.search(tail)
         if m2:
             return m2.group(1), m2.group(2)
+
+    if "通行费" in text:
+        m3 = TOLL_TOTAL.search(text)
+        if m3:
+            tax_amount = None if m3.group(2).startswith("*") else m3.group(2)
+            return m3.group(1), tax_amount
     return None, None
 
 
@@ -235,9 +268,31 @@ def extract_price_tax(text: str) -> tuple[str | None, str | None]:
         for line in text.splitlines():
             m2 = LEGACY_PRICE_TAX_LINE.match(line.strip())
             if m2:
-                return m2.group(1), m2.group(2)
+                if re.search(r"[零壹贰叁肆伍陆柒捌玖拾佰仟万亿圆元角分整]", m2.group(1)):
+                    return m2.group(1), m2.group(2)
+            m3 = FLAT_PRICE_TAX_LINE.search(line.strip())
+            if m3:
+                return m3.group(1), m3.group(2)
+        standalone = _standalone_price_tax_amount(text)
+        if standalone:
+            return None, standalone
         return None, None
     amount_in_words = re.sub(r"\s+", "", m.group(1))
+    if not re.search(r"[零壹贰叁肆伍陆柒捌玖拾佰仟万亿圆元角分整]", amount_in_words):
+        for line in text.splitlines():
+            m2 = LEGACY_PRICE_TAX_LINE.match(line.strip())
+            if m2 and re.search(
+                r"[零壹贰叁肆伍陆柒捌玖拾佰仟万亿圆元角分整]",
+                m2.group(1),
+            ):
+                return m2.group(1), m2.group(2)
+            m3 = FLAT_PRICE_TAX_LINE.search(line.strip())
+            if m3:
+                return m3.group(1), m3.group(2)
+        standalone = _standalone_price_tax_amount(text)
+        if standalone:
+            return None, standalone
+        return None, None
     return amount_in_words, m.group(2)
 
 
@@ -308,7 +363,10 @@ def extract_items(text: str) -> list[dict[str, Any]]:
             )
         else:
             pending_name_parts.append(line)
-    return items
+    if items:
+        return items
+    tail_items = _extract_tail_items(lines)
+    return tail_items or _extract_toll_items(lines)
 
 
 def _extract_legacy_items(lines: list[str]) -> list[dict[str, Any]]:
@@ -358,6 +416,126 @@ def _extract_legacy_items(lines: list[str]) -> list[dict[str, Any]]:
     return items
 
 
+def _extract_tail_items(lines: list[str]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or any(
+            marker in stripped
+            for marker in (
+                "合计",
+                "价税",
+                "开票人",
+                "购",
+                "买",
+                "方",
+                "销",
+                "售",
+            )
+        ):
+            continue
+        m = ITEM_TAIL.search(stripped)
+        if m:
+            items.append(
+                {
+                    "name": stripped[: m.start()].strip() or None,
+                    "spec": None,
+                    "unit": None,
+                    "quantity": None,
+                    "unit_price": None,
+                    "amount": m.group(1),
+                    "tax_rate": None if m.group(2) == "*" else m.group(2),
+                    "tax_amount": None if m.group(3) == "*" else m.group(3),
+                }
+            )
+            continue
+        m = ITEM_TAIL_TAX_FREE.search(stripped)
+        if m:
+            items.append(
+                {
+                    "name": stripped[: m.start()].strip() or None,
+                    "spec": None,
+                    "unit": None,
+                    "quantity": None,
+                    "unit_price": None,
+                    "amount": m.group(1),
+                    "tax_rate": m.group(2),
+                    "tax_amount": "0.00",
+                }
+            )
+            continue
+        m = LEGACY_ITEM_TAIL.search(stripped)
+        if m:
+            items.append(
+                {
+                    "name": stripped[: m.start()].strip() or None,
+                    "spec": None,
+                    "unit": None,
+                    "quantity": None,
+                    "unit_price": m.group(1),
+                    "amount": m.group(2),
+                    "tax_rate": None if m.group(3) == "*" else m.group(3),
+                    "tax_amount": None if m.group(4).startswith("*") else m.group(4),
+                }
+            )
+            continue
+        m = GENERAL_ETICKET_ITEM_TAIL.search(stripped)
+        if m:
+            items.append(
+                {
+                    "name": stripped[: m.start()].strip() or None,
+                    "spec": None,
+                    "unit": None,
+                    "quantity": None,
+                    "unit_price": m.group(1),
+                    "amount": m.group(4),
+                    "tax_rate": None,
+                    "tax_amount": m.group(3),
+                }
+            )
+    return items
+
+
+def _extract_toll_items(lines: list[str]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for idx, line in enumerate(lines):
+        candidate = line.strip()
+        if idx + 1 < len(lines):
+            candidate = f"{candidate} {lines[idx + 1].strip()}"
+        m = TOLL_ITEM.search(candidate)
+        if not m:
+            continue
+        tax_amount = m.group("tax")
+        items.append(
+            {
+                "name": m.group("name"),
+                "spec": None,
+                "unit": None,
+                "quantity": None,
+                "unit_price": None,
+                "amount": m.group("amount"),
+                "tax_rate": m.group("rate"),
+                "tax_amount": None if tax_amount.startswith("*") else tax_amount,
+            }
+        )
+    return items
+
+
+def _standalone_price_tax_amount(text: str) -> str | None:
+    lines = [line.strip() for line in text.splitlines()]
+    seen_price_tax = False
+    for line in lines:
+        compact = "".join(line.split())
+        if "价税合计" in compact:
+            seen_price_tax = True
+            continue
+        if not seen_price_tax:
+            continue
+        if re.fullmatch(rf"{_YUAN}\s*(-?[0-9.]+)", line):
+            return re.sub(rf"^{_YUAN}\s*", "", line)
+    return None
+
+
 def apply_bare_party_fallback(text: str, buyer: dict[str, Any], seller: dict[str, Any]) -> None:
     if _needs_party_name_fallback(buyer.get("name")) or _needs_party_name_fallback(
         seller.get("name")
@@ -384,6 +562,48 @@ def apply_bare_party_fallback(text: str, buyer: dict[str, Any], seller: dict[str
                 buyer["name"] = companies[0]
             if _needs_party_name_fallback(seller.get("name")):
                 seller["name"] = companies[1]
+
+
+def apply_tail_layout_party_fallback(
+    text: str,
+    buyer: dict[str, Any],
+    seller: dict[str, Any],
+) -> None:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    for idx, line in enumerate(lines):
+        if not re.fullmatch(r"(?:23|24|25|26)\d{18}", line):
+            continue
+        if idx + 5 >= len(lines) or not BARE_DATE.search(lines[idx + 1]):
+            continue
+        buyer_name, buyer_tax, seller_name, seller_tax = lines[idx + 2 : idx + 6]
+        if not BARE_TAX_ID.fullmatch(buyer_tax) or not BARE_TAX_ID.fullmatch(seller_tax):
+            continue
+        buyer["name"] = buyer_name
+        buyer["tax_id"] = buyer_tax
+        seller["name"] = seller_name
+        seller["tax_id"] = seller_tax
+        return
+
+    m = TAIL_LAYOUT_PARTIES.search(text)
+    if not m:
+        return
+    buyer["tax_id"] = buyer.get("tax_id") or m.group("buyer_tax")
+    seller["name"] = m.group("seller_name")
+    seller["tax_id"] = m.group("seller_tax")
+    buyer_name = _tail_layout_buyer_name(lines)
+    if buyer_name:
+        buyer["name"] = buyer_name
+
+
+def _tail_layout_buyer_name(lines: list[str]) -> str | None:
+    for line in lines:
+        if not re.search(r"\b20\d{6}\b", line):
+            continue
+        tail = re.split(r"\b20\d{6}\b", line, maxsplit=1)[-1]
+        matches = list(BARE_COMPANY_NAME.finditer(tail))
+        if matches:
+            return matches[-1].group(1).strip()
+    return None
 
 
 def _bare_company_names(text: str) -> list[str]:
