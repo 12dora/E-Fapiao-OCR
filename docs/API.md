@@ -82,8 +82,8 @@ GET /v1/capabilities
 |---|---|---|
 | `version` | string | 服务版本 |
 | `formats` | object | `pdf` / `ofd` / `image` 当前状态 |
-| `document_types` | string[] | 可返回的单据大类 |
-| `invoice_types` | string[] | 可返回的票据细分类型 |
+| `document_types` | string[] | 全部已知单据大类的静态枚举，不随运行态变化；`image-*` / `ofd-fapiao` 是否真正可解析以 `formats` 字段为准。 |
+| `invoice_types` | string[] | 全部已知票据细分类型的静态枚举。 |
 | `parse_modes.ocr_mode` | object | `ocr_mode` 可选值说明 |
 | `ocr` | object/null | 当 `EFAPIAO_OCR_VENDOR=cnocr` 时返回当前 CnOCR 模型、backend、profile 和可选 profile 列表 |
 
@@ -166,9 +166,16 @@ Content-Type: multipart/form-data
     "ocr_required": false,
     "ocr_vendor": null
   },
-  "elapsed_ms": 21
+  "elapsed_ms": 21,
+  "elapsed_us": 21430
 }
 ```
+
+> 字段说明：
+> - 顶层 `document_type` / `invoice_type` 与 `data.document_type` / `data.invoice_type`
+>   一定相等，重复字段是历史契约。新代码建议读取顶层，避免与 `data` 内部字段混淆。
+> - `elapsed_ms` 为向下截断的整毫秒，与历史契约保持一致；亚毫秒任务可能为 `0`。
+>   `elapsed_us` 为 `v0.1.4+` 新增的可选字段，提供微秒精度，老客户端可继续使用 `elapsed_ms`。
 
 ### 3.4 批量解析文件
 
@@ -224,7 +231,8 @@ curl -F "files=@invoice-1.pdf" \
         "ocr_required": false,
         "ocr_vendor": null
       },
-      "elapsed_ms": 18
+      "elapsed_ms": 18,
+      "elapsed_us": 18234
     },
     {
       "index": 1,
@@ -244,12 +252,17 @@ curl -F "files=@invoice-1.pdf" \
         "ocr_required": false,
         "ocr_vendor": null
       },
-      "elapsed_ms": 1
+      "elapsed_ms": 1,
+      "elapsed_us": 1107
     }
   ],
-  "elapsed_ms": 19
+  "elapsed_ms": 19,
+  "elapsed_us": 19632
 }
 ```
+
+> `items[].elapsed_us`、批量根级 `elapsed_us` 与 `parse` 接口同义，是 `v0.1.4+` 新增的
+> 可选字段。失败项的 `format` / `data` 保持为 `null`，与历史契约一致。
 
 批量接口当前在服务进程内串行处理每个文件。它的主要收益是减少上游多次 HTTP
 握手和请求管理成本；如需提高吞吐，建议上游以有限并发调用批量接口，或后续引入服务端

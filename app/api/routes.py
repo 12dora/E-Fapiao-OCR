@@ -120,6 +120,7 @@ async def parse(
         data=item.data,
         engine=item.engine,
         elapsed_ms=item.elapsed_ms,
+        elapsed_us=item.elapsed_us,
     )
 
 
@@ -150,6 +151,7 @@ async def parse_batch(
             content = await _read_upload(file, request_id)
         except HTTPException as e:
             detail: dict[str, Any] = e.detail if isinstance(e.detail, dict) else {}
+            elapsed_us = int((time.perf_counter() - item_start) * 1_000_000)
             items.append(
                 BatchParseItem(
                     index=index,
@@ -158,7 +160,8 @@ async def parse_batch(
                     code=cast(ErrorCode, detail.get("code") or "invalid_input"),
                     message=detail.get("message") or "文件读取失败",
                     engine=_engine_status(ocr_mode),
-                    elapsed_ms=int((time.perf_counter() - item_start) * 1000),
+                    elapsed_ms=_us_to_ms(elapsed_us),
+                    elapsed_us=elapsed_us,
                 )
             )
             continue
@@ -176,7 +179,7 @@ async def parse_batch(
         )
 
     succeeded = sum(1 for item in items if item.status == "ok")
-    elapsed_ms = int((time.perf_counter() - start) * 1000)
+    elapsed_us = int((time.perf_counter() - start) * 1_000_000)
     return BatchParseResponse(
         request_id=request_id,
         status="ok",
@@ -184,7 +187,8 @@ async def parse_batch(
         succeeded=succeeded,
         failed=len(items) - succeeded,
         items=items,
-        elapsed_ms=elapsed_ms,
+        elapsed_ms=_us_to_ms(elapsed_us),
+        elapsed_us=elapsed_us,
     )
 
 
@@ -263,14 +267,16 @@ def _parse_content(
         logger.exception("internal_error request_id=%s", request_id)
         return _error_item(index, filename, "internal_error", "服务内部错误", ocr_mode, start)
 
-    elapsed_ms = int((time.perf_counter() - start) * 1000)
+    elapsed_us = int((time.perf_counter() - start) * 1_000_000)
+    elapsed_ms = _us_to_ms(elapsed_us)
     invoice_data = InvoiceData.model_validate(data)
     logger.info(
-        "parsed request_id=%s format=%s type=%s elapsed_ms=%d",
+        "parsed request_id=%s format=%s type=%s elapsed_ms=%d elapsed_us=%d",
         request_id,
         invoice_data.source.format,
         invoice_data.invoice_type,
         elapsed_ms,
+        elapsed_us,
     )
     return BatchParseItem(
         index=index,
@@ -287,6 +293,7 @@ def _parse_content(
             ocr_vendor=invoice_data.source.ocr_vendor,
         ),
         elapsed_ms=elapsed_ms,
+        elapsed_us=elapsed_us,
     )
 
 
@@ -302,6 +309,7 @@ def _error_item(
     invoice_type: InvoiceType | None = None,
     engine: EngineStatus | None = None,
 ) -> BatchParseItem:
+    elapsed_us = int((time.perf_counter() - start) * 1_000_000)
     return BatchParseItem(
         index=index,
         filename=filename,
@@ -311,8 +319,15 @@ def _error_item(
         document_type=document_type,
         invoice_type=invoice_type,
         engine=engine or _engine_status(ocr_mode),
-        elapsed_ms=int((time.perf_counter() - start) * 1000),
+        elapsed_ms=_us_to_ms(elapsed_us),
+        elapsed_us=elapsed_us,
     )
+
+
+def _us_to_ms(elapsed_us: int) -> int:
+    # 保持与旧契约一致：truncate toward zero，亚毫秒返回 0。
+    # 若需要亚毫秒精度，请读取新增的 elapsed_us 字段。
+    return elapsed_us // 1000 if elapsed_us >= 0 else -((-elapsed_us) // 1000)
 
 
 def _raise(
