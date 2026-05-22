@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / "dist"
 BUILD = ROOT / "build"
 MODEL_BUNDLE = BUILD / "model-bundle"
+MODEL_CACHE = BUILD / "model-cache"
 PYINSTALLER_EXCLUDES = [
     # Development / REPL / formatting helpers.
     "IPython",
@@ -222,16 +223,20 @@ def _prepare_cnocr_model_bundle(profile_name: str) -> list[tuple[Path, str]]:
     profile = resolve_cnocr_model_profile(profile_name)
     from cnocr import CnOcr  # type: ignore[import-not-found]
 
+    rec_root = MODEL_CACHE / "cnocr"
+    det_root = MODEL_CACHE / "cnstd"
     CnOcr(
         det_model_name=profile.det_model_name,
         rec_model_name=profile.rec_model_name,
         det_model_backend=profile.det_model_backend,
         rec_model_backend=profile.rec_model_backend,
+        rec_root=rec_root,
+        det_root=det_root,
     )
 
     shutil.rmtree(MODEL_BUNDLE, ignore_errors=True)
-    rec_src = Path.home() / ".cnocr" / "2.3" / profile.rec_model_name
-    det_src = Path.home() / ".cnstd" / "1.2" / "ppocr" / profile.det_model_name
+    rec_src = rec_root / "2.3" / profile.rec_model_name
+    det_src = det_root / "1.2" / "ppocr" / profile.det_model_name
     rec_dst = MODEL_BUNDLE / "models" / "cnocr" / "2.3" / profile.rec_model_name
     det_dst = MODEL_BUNDLE / "models" / "cnstd" / "1.2" / "ppocr" / profile.det_model_name
     _copy_model_dir(rec_src, rec_dst)
