@@ -37,6 +37,25 @@ OCR 队列、人工核对队列，还是先补齐 OCR 服务配置。
 OCR vendor 由环境变量 `EFAPIAO_OCR_VENDOR` 配置，可选 `none` / `cnocr` / `http` /
 `tencent`。腾讯云、第三方 HTTP 与 CnOCR 的详细鉴权和部署参数见 [DESIGN.md](../DESIGN.md)。
 
+### 2.1 CnOCR 模型选择
+
+本地 CnOCR 支持运行时多模型 selection。默认 profile 是 `invoice-lite`：
+
+| Profile | 检测模型 | 识别模型 | 说明 |
+|---|---|---|---|
+| `invoice-lite` | `ch_PP-OCRv5_det` | `doc-densenet_lite_136-gru` | 默认发票 OCR 轻量模型 |
+| `general-lite` | `ch_PP-OCRv5_det` | `densenet_lite_136-gru` | 通用中文轻量模型 |
+| `scene-lite` | `ch_PP-OCRv5_det` | `scene-densenet_lite_136-gru` | 场景文字轻量模型 |
+| `mobile-lite` | `ch_PP-OCRv5_det` | `ch_ppocr_mobile_v2.0` | 速度优先的 mobile 模型 |
+
+```bash
+export EFAPIAO_OCR_VENDOR=cnocr
+export EFAPIAO_CNOCR_MODEL_PROFILE=invoice-lite
+```
+
+显式设置 `EFAPIAO_CNOCR_DET_MODEL` / `EFAPIAO_CNOCR_REC_MODEL` 时，会覆盖 profile
+默认值。默认后端为 `onnx`，用于 CPU 和多架构发布包。
+
 ## 3. HTTP 接口
 
 ### 3.1 健康检查
@@ -66,6 +85,31 @@ GET /v1/capabilities
 | `document_types` | string[] | 可返回的单据大类 |
 | `invoice_types` | string[] | 可返回的票据细分类型 |
 | `parse_modes.ocr_mode` | object | `ocr_mode` 可选值说明 |
+| `ocr` | object/null | 当 `EFAPIAO_OCR_VENDOR=cnocr` 时返回当前 CnOCR 模型、backend、profile 和可选 profile 列表 |
+
+CnOCR 已启用时，`ocr` 字段示例：
+
+```json
+{
+  "vendor": "cnocr",
+  "model_profile": "invoice-lite",
+  "det_model": "ch_PP-OCRv5_det",
+  "rec_model": "doc-densenet_lite_136-gru",
+  "det_backend": "onnx",
+  "rec_backend": "onnx",
+  "bundled_models": true,
+  "available_model_profiles": [
+    {
+      "name": "invoice-lite",
+      "det_model": "ch_PP-OCRv5_det",
+      "rec_model": "doc-densenet_lite_136-gru",
+      "det_backend": "onnx",
+      "rec_backend": "onnx",
+      "description": "发票/行程单优先的轻量文档识别组合"
+    }
+  ]
+}
+```
 
 ### 3.3 解析文件
 
@@ -313,13 +357,19 @@ GitHub Release 资产命名：
 
 | 平台 | 资产名 |
 |---|---|
-| Linux x86_64 | `efapiao-<version>-linux-x86_64.tar.gz` |
-| Linux arm64 | `efapiao-<version>-linux-arm64.tar.gz` |
-| macOS arm64 | `efapiao-<version>-darwin-arm64.tar.gz` |
-| Windows x86_64 | `efapiao-<version>-windows-x86_64.zip` |
+| Linux x86_64 | `efapiao-<version>-linux-x86_64-lite.tar.gz` / `efapiao-<version>-linux-x86_64-with-model.tar.gz` |
+| Linux arm64 | `efapiao-<version>-linux-arm64-lite.tar.gz` / `efapiao-<version>-linux-arm64-with-model.tar.gz` |
+| macOS arm64 | `efapiao-<version>-darwin-arm64-lite.tar.gz` / `efapiao-<version>-darwin-arm64-with-model.tar.gz` |
+| Windows x86_64 | `efapiao-<version>-windows-x86_64-lite.zip` / `efapiao-<version>-windows-x86_64-with-model.zip` |
 
 `darwin-x86_64` 可在 Intel Mac 本地用 `scripts/build_binary.py` 构建；默认 GitHub
 Release 资产优先发布当前更常用且 runner 可用性更稳定的平台组合。
+
+每个平台发布两个包：
+
+- `lite`：不包含 CnOCR 依赖和模型，适合规则引擎、HTTP OCR 和腾讯云 OCR。
+- `with-model`：内置 `invoice-lite` 的 CnOCR ONNX 模型，设置
+  `EFAPIAO_OCR_VENDOR=cnocr` 后可直接在对应平台运行。
 
 二进制提供与 CLI 相同的命令：
 
