@@ -272,9 +272,9 @@ curl -H "X-API-Key: your-key" \
 
 ```bash
 pip install -e ".[build-bin]"
-python scripts/build_binary.py --version v0.1.2 --artifact-flavor lite
+python scripts/build_binary.py --version v0.1.3 --artifact-flavor lite
 pip install -e ".[ocr-cnocr,build-bin]"
-python scripts/build_binary.py --version v0.1.2 \
+python scripts/build_binary.py --version v0.1.3 \
   --artifact-flavor with-model \
   --bundle-cnocr-model \
   --cnocr-model-profile invoice-lite
@@ -292,8 +292,8 @@ efapiao-<semver>-windows-x86_64-with-model.zip
 GitHub Release 由 SemVer tag 触发：
 
 ```bash
-git tag v0.1.2
-git push origin v0.1.2
+git tag v0.1.3
+git push origin v0.1.3
 ```
 
 默认发布 `linux-x86_64`、`linux-arm64`、`darwin-arm64`、`windows-x86_64`，
