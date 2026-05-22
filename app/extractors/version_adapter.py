@@ -34,7 +34,7 @@ def select_extractor(text: str, qr_payload: str | None = None) -> Callable[[str]
     n = _normalize(text)
 
     # 文本层关键字识别
-    if "机票行程单" in n or "航空运输电子客票行程单" in n:
+    if _is_air_itinerary_ocr(n):
         return air_itinerary_ocr.extract
     if "电子客票" in n or "中国铁路" in n:
         return rail_12306.extract
@@ -44,6 +44,7 @@ def select_extractor(text: str, qr_payload: str | None = None) -> Callable[[str]
         "普通发票" in n
         or "通用(电子)发票" in n
         or ("电子发票" in n and "发票号码" in n)
+        or _is_general_invoice_ocr(n)
         or _is_legacy_general_invoice(n)
     ):
         return digital_general.extract
@@ -70,3 +71,29 @@ def _is_legacy_general_invoice(normalized_text: str) -> bool:
     )
     item_markers = "货物或应税劳务" in normalized_text or "服务名称" in normalized_text
     return core_markers and party_markers and item_markers and "专用发票" not in normalized_text
+
+
+def _is_air_itinerary_ocr(normalized_text: str) -> bool:
+    if "机票行程单" in normalized_text or "航空运输电子客票行程单" in normalized_text:
+        return True
+    markers = (
+        "旅客姓名",
+        "有效身份证件号码",
+        "承运人",
+        "航班号",
+        "电子客票号码",
+        "燃油附加费",
+        "民航发展基金",
+        "国内国际标识",
+    )
+    return sum(marker in normalized_text for marker in markers) >= 4
+
+
+def _is_general_invoice_ocr(normalized_text: str) -> bool:
+    if "专用发票" in normalized_text:
+        return False
+    core = "发票号码" in normalized_text and "开票日期" in normalized_text
+    party = "纳税人识别号" in normalized_text or "统一社会信用代码" in normalized_text
+    totals = "价税合计" in normalized_text or "合计" in normalized_text
+    items = "项目名称" in normalized_text or "税率" in normalized_text
+    return core and party and totals and items

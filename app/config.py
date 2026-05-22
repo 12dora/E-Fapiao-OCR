@@ -3,6 +3,8 @@
 import os
 from dataclasses import dataclass
 
+from app.ocr_model_profiles import DEFAULT_CNOCR_MODEL_PROFILE, resolve_cnocr_model_profile
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -27,8 +29,18 @@ class Settings:
     ocr_vendor: str = os.getenv("EFAPIAO_OCR_VENDOR", "none")
 
     # CnOCR vendor：默认使用纯 CPU 友好的 ONNX 小模型组合
-    cnocr_det_model_name: str = os.getenv("EFAPIAO_CNOCR_DET_MODEL", "ch_PP-OCRv5_det")
-    cnocr_rec_model_name: str = os.getenv("EFAPIAO_CNOCR_REC_MODEL", "doc-densenet_lite_136-gru")
+    cnocr_model_profile: str = os.getenv(
+        "EFAPIAO_CNOCR_MODEL_PROFILE",
+        DEFAULT_CNOCR_MODEL_PROFILE,
+    )
+    cnocr_det_model_name: str = os.getenv(
+        "EFAPIAO_CNOCR_DET_MODEL",
+        resolve_cnocr_model_profile(cnocr_model_profile).det_model_name,
+    )
+    cnocr_rec_model_name: str = os.getenv(
+        "EFAPIAO_CNOCR_REC_MODEL",
+        resolve_cnocr_model_profile(cnocr_model_profile).rec_model_name,
+    )
     cnocr_det_model_backend: str = os.getenv("EFAPIAO_CNOCR_DET_BACKEND", "onnx")
     cnocr_rec_model_backend: str = os.getenv("EFAPIAO_CNOCR_REC_BACKEND", "onnx")
 

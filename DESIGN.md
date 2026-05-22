@@ -394,6 +394,7 @@ ImageParser
 | 环境变量 | 默认值 | 说明 |
 |---|---|---|
 | `EFAPIAO_OCR_VENDOR` | `none` | `none` / `cnocr` / `http` / `tencent` |
+| `EFAPIAO_CNOCR_MODEL_PROFILE` | `invoice-lite` | CnOCR 模型 profile，支持 `invoice-lite` / `general-lite` / `scene-lite` / `mobile-lite` |
 | `EFAPIAO_CNOCR_DET_MODEL` | `ch_PP-OCRv5_det` | CnOCR 检测模型 |
 | `EFAPIAO_CNOCR_REC_MODEL` | `doc-densenet_lite_136-gru` | CnOCR 识别模型 |
 | `EFAPIAO_CNOCR_DET_BACKEND` | `onnx` | 纯 CPU / 多架构默认使用 ONNX |
@@ -411,6 +412,19 @@ ImageParser
 | `EFAPIAO_TENCENT_OCR_ACTION` | `RecognizeGeneralInvoice` | 腾讯云通用票据识别高级版 Action |
 | `EFAPIAO_TENCENT_OCR_VERSION` | `2018-11-19` | 腾讯云 OCR API 版本 |
 | `EFAPIAO_TENCENT_OCR_TIMEOUT` | `10` | 腾讯云 OCR 超时秒数 |
+
+本地 CnOCR 默认组合选用轻量模型：检测 `ch_PP-OCRv5_det`，识别
+`doc-densenet_lite_136-gru`，后端均为 `onnx`。这一路径用于图片/扫描件兜底，
+OCR 文本仍回到 `VersionAdapter -> extractor -> Normalizer`，不直接输出结构化字段。
+运行时通过 `EFAPIAO_CNOCR_MODEL_PROFILE` 支持多模型 selection；显式
+`EFAPIAO_CNOCR_DET_MODEL` / `EFAPIAO_CNOCR_REC_MODEL` 会覆盖 profile 默认值。
+
+Release 产物分为两类：
+
+- `lite`：不包含 CnOCR 依赖和模型，适合规则引擎、HTTP OCR 和腾讯云 OCR。
+- `with-model`：内置 `invoice-lite` 的 CnOCR ONNX 模型目录。包内模型以相对路径
+  `models/cnocr` / `models/cnstd` 随二进制发布，运行时优先从包内读取；同一构建
+  逻辑覆盖 Windows / Linux / macOS 与 x86_64 / arm64 架构。
 
 **第三方 HTTP OCR 响应约定**
 

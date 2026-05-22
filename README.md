@@ -157,9 +157,28 @@ export EFAPIAO_OCR_VENDOR=none
 ```bash
 pip install -e ".[ocr-cnocr]"
 export EFAPIAO_OCR_VENDOR=cnocr
+export EFAPIAO_CNOCR_MODEL_PROFILE=invoice-lite
+export EFAPIAO_CNOCR_DET_MODEL=ch_PP-OCRv5_det
+export EFAPIAO_CNOCR_REC_MODEL=doc-densenet_lite_136-gru
 export EFAPIAO_CNOCR_DET_BACKEND=onnx
 export EFAPIAO_CNOCR_REC_BACKEND=onnx
 ```
+
+默认识别模型使用 CnOCR 文档场景轻量模型 `doc-densenet_lite_136-gru`，配合
+`ch_PP-OCRv5_det` 检测模型和 ONNX 后端，适合作为图片/扫描件发票的本地 CPU
+兜底识别路径。可通过 `efapiao capabilities` 确认运行时实际加载的 CnOCR 模型配置。
+
+CnOCR 支持多模型 profile selection：
+
+| Profile | 检测模型 | 识别模型 | 说明 |
+|---|---|---|---|
+| `invoice-lite` | `ch_PP-OCRv5_det` | `doc-densenet_lite_136-gru` | 默认发票 OCR 轻量模型 |
+| `general-lite` | `ch_PP-OCRv5_det` | `densenet_lite_136-gru` | 通用中文轻量模型 |
+| `scene-lite` | `ch_PP-OCRv5_det` | `scene-densenet_lite_136-gru` | 场景文字轻量模型 |
+| `mobile-lite` | `ch_PP-OCRv5_det` | `ch_ppocr_mobile_v2.0` | 速度优先的 mobile 模型 |
+
+可通过 `EFAPIAO_CNOCR_MODEL_PROFILE` 切换 profile；如同时设置
+`EFAPIAO_CNOCR_DET_MODEL` / `EFAPIAO_CNOCR_REC_MODEL`，显式模型名优先。
 
 启用第三方 HTTP OCR：
 
@@ -253,14 +272,21 @@ curl -H "X-API-Key: your-key" \
 
 ```bash
 pip install -e ".[build-bin]"
-python scripts/build_binary.py --version v0.1.2
+python scripts/build_binary.py --version v0.1.2 --artifact-flavor lite
+pip install -e ".[ocr-cnocr,build-bin]"
+python scripts/build_binary.py --version v0.1.2 \
+  --artifact-flavor with-model \
+  --bundle-cnocr-model \
+  --cnocr-model-profile invoice-lite
 ```
 
 产物位于 `dist/`：
 
 ```text
-efapiao-<semver>-<os>-<arch>.tar.gz
-efapiao-<semver>-windows-x86_64.zip
+efapiao-<semver>-<os>-<arch>-lite.tar.gz
+efapiao-<semver>-<os>-<arch>-with-model.tar.gz
+efapiao-<semver>-windows-x86_64-lite.zip
+efapiao-<semver>-windows-x86_64-with-model.zip
 ```
 
 GitHub Release 由 SemVer tag 触发：
@@ -270,7 +296,10 @@ git tag v0.1.2
 git push origin v0.1.2
 ```
 
-默认发布 `linux-x86_64`、`linux-arm64`、`darwin-arm64`、`windows-x86_64`，并生成 `SHA256SUMS`。
+默认发布 `linux-x86_64`、`linux-arm64`、`darwin-arm64`、`windows-x86_64`，
+每个平台各有 `lite` 与 `with-model` 两个包，并生成 `SHA256SUMS`。`with-model`
+包内置 `invoice-lite` CnOCR ONNX 模型，设置 `EFAPIAO_OCR_VENDOR=cnocr` 后可离线使用；
+`lite` 包不包含 CnOCR 依赖或模型，适合仅规则解析、HTTP OCR 或腾讯云 OCR 场景。
 
 Release 构建会排除开发工具、Uvicorn 热重载/WebSocket 扩展、Pillow 罕见图片格式插件等可选模块；PDF 文本抽取和渲染统一使用 `pypdfium2`，避免同时打包 `pdfminer/cryptography` 这类大依赖。
 

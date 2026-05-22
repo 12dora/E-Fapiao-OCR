@@ -224,6 +224,35 @@ def test_pdf_parser_uses_embedded_fields_when_text_layer_has_broken_font_map() -
     assert data["seller"]["tax_id"] == "91310106MA1FYMRL1D"
 
 
+def test_cnocr_air_itinerary_text_keeps_unified_output_shape() -> None:
+    raw = select_extractor(sanitized.IMAGE_AIR_ITINERARY_CNOCR_TEXT)(
+        sanitized.IMAGE_AIR_ITINERARY_CNOCR_TEXT
+    )
+    raw.setdefault("source", {})["format"] = "image"
+    raw["source"]["extracted_by"] = "ocr"
+    raw["source"]["ocr_vendor"] = "cnocr"
+
+    data = normalize(raw)
+
+    assert data["document_type"] == "image-air-itinerary"
+    assert data["invoice_type"] == "air_itinerary"
+    assert data["invoice_number"] == "25138836112000777382"
+    assert data["issue_date"] == "2025-07-04"
+    assert data["buyer"]["name"] == "脱敏采购科技有限公司"
+    assert data["seller"]["name"] == "脱敏航空服务有限公司"
+    assert data["amount_without_tax"] == "550.46"
+    assert data["tax_amount"] == "49.54"
+    assert data["amount_with_tax"] == "610.46"
+    assert data["source"]["ocr_vendor"] == "cnocr"
+    air = data["extra"]["air_itinerary"]
+    assert air["passenger_name"] == "测试旅客"
+    assert air["flight_no"] == "CA1234"
+    assert air["from_station"] == "脱敏机场T3"
+    assert air["to_station"] == "测试机场T2"
+    assert air["depart_time"] == "2025-07-05 08:15:00"
+    assert data["items"][0]["name"] == "航空运输电子客票行程单"
+
+
 def _pdf_with_embedded_invoice_fields() -> bytes:
     private = (
         b"<</Creator(gp-template)"

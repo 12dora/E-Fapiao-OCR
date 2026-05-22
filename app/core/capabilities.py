@@ -6,11 +6,12 @@ from typing import Any
 
 from app import __version__
 from app.config import settings
+from app.ocr_model_profiles import available_profile_payload, bundled_model_root
 
 
 def build_capabilities(config: Any = settings) -> dict[str, Any]:
     image_status = "supported" if config.image_ocr_enabled else "not_implemented"
-    return {
+    payload = {
         "version": __version__,
         "formats": {
             "pdf": "supported",
@@ -43,3 +44,15 @@ def build_capabilities(config: Any = settings) -> dict[str, Any]:
             }
         },
     }
+    if getattr(config, "ocr_vendor", "").lower() == "cnocr":
+        payload["ocr"] = {
+            "vendor": "cnocr",
+            "model_profile": config.cnocr_model_profile,
+            "det_model": config.cnocr_det_model_name,
+            "rec_model": config.cnocr_rec_model_name,
+            "det_backend": config.cnocr_det_model_backend,
+            "rec_backend": config.cnocr_rec_model_backend,
+            "bundled_models": bundled_model_root() is not None,
+            "available_model_profiles": available_profile_payload(),
+        }
+    return payload
