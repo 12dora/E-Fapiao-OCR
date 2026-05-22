@@ -120,6 +120,7 @@ class ParseResponse(BaseModel):
     data: InvoiceData
     engine: EngineStatus
     elapsed_ms: int
+    elapsed_us: int | None = None
 
 
 ErrorCode = Literal[
@@ -154,6 +155,7 @@ class BatchParseItem(BaseModel):
     message: str | None = None
     engine: EngineStatus
     elapsed_ms: int
+    elapsed_us: int | None = None
 
 
 class BatchParseResponse(BaseModel):
@@ -164,6 +166,7 @@ class BatchParseResponse(BaseModel):
     failed: int
     items: list[BatchParseItem]
     elapsed_ms: int
+    elapsed_us: int | None = None
 
 
 class HealthResponse(BaseModel):

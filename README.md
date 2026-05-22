@@ -66,6 +66,10 @@ with open("invoice.pdf", "rb") as f:
 print(result["document_type"], result["invoice_type"], result["invoice_number"])
 ```
 
+`parse_invoice` 的实际签名是
+`parse_invoice(content: bytes, hint_type: str | None = None, *, ocr_mode: str = "auto")`。
+省略 `hint_type` 与传入 `"auto"` 行为一致。
+
 ### CLI
 
 ```bash
@@ -111,9 +115,14 @@ curl -F "files=@invoice-1.pdf" \
     "ocr_used": false,
     "ocr_required": false,
     "ocr_vendor": null
-  }
+  },
+  "elapsed_ms": 21,
+  "elapsed_us": 21430
 }
 ```
+
+- `data` 内同样会包含与顶层相等的 `document_type` / `invoice_type` 字段，是历史契约的冗余。新代码建议读取顶层。
+- `elapsed_ms` 为向下截断的整毫秒，亚毫秒任务会显示 `0`。`v0.1.4+` 新增的可选 `elapsed_us` 提供微秒精度，老客户端可以继续只读 `elapsed_ms`。
 
 完整字段见 [API 文档](docs/API.md)。
 
