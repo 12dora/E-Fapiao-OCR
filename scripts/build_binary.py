@@ -43,9 +43,23 @@ PYINSTALLER_EXCLUDES = [
     "uvloop",
     # Optional data/science/display helpers.
     "defusedxml",
+    "cuda",
+    "cuda_bindings",
+    "cuda_pathfinder",
     "numpy",
     "pandas",
     "pygame",
+    "pytorch_lightning",
+    "lightning",
+    "torch",
+    "torchaudio",
+    "torchmetrics",
+    "torchvision",
+    "triton",
+    "ultralytics",
+    "wandb",
+    "matplotlib",
+    "seaborn",
     "tabulate",
     # Pillow image formats that are not needed for QR/image OCR input.
     "PIL.AvifImagePlugin",
@@ -135,12 +149,8 @@ def main() -> int:
         ):
             cmd.extend(["--hidden-import", module])
     cnocr_required_modules = {
-        "defusedxml",
         "numpy",
-        "pandas",
-        "rich",
         "setuptools",
-        "tabulate",
     }
     for module in PYINSTALLER_EXCLUDES:
         if args.bundle_cnocr_model and module in cnocr_required_modules:
