@@ -8,12 +8,14 @@
 
 from __future__ import annotations
 
+import hmac
 import logging
 import time
 import uuid
 from typing import Annotated, Any, NoReturn, cast
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
+from starlette.concurrency import run_in_threadpool
 
 from app.api.schemas import (
     BatchParseItem,
@@ -47,7 +49,8 @@ logger = logging.getLogger("efapiao")
 def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
     if not settings.auth_enabled:
         return
-    if x_api_key != settings.api_key:
+    # 常量时间比较，避免通过响应时间逐字节猜测 API Key。
+    if not hmac.compare_digest(x_api_key or "", settings.api_key):
         raise HTTPException(
             status_code=401,
             detail={"code": "unauthorized", "message": "X-API-Key 缺失或不正确"},
@@ -88,7 +91,10 @@ async def parse(
         _raise(400, request_id, "invalid_input", "缺少 file 字段")
 
     content = await _read_upload(file, request_id)
-    item = _parse_content(
+    # parse_invoice 是同步的 CPU/网络密集型调用（pdfium 渲染、zlib、OCR 等），
+    # 放到线程池执行，避免阻塞事件循环拖垮整个 worker 的并发。
+    item = await run_in_threadpool(
+        _parse_content,
         request_id=request_id,
         content=content,
         filename=file.filename,
@@ -167,7 +173,8 @@ async def parse_batch(
             continue
 
         items.append(
-            _parse_content(
+            await run_in_threadpool(
+                _parse_content,
                 request_id=request_id,
                 content=content,
                 filename=file.filename,

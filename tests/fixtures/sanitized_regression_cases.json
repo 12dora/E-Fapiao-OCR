@@ -4995,10 +4995,10 @@
                 "passenger_name": "测试人员013",
                 "id_no_masked": "110000********0001",
                 "train_no": "G1655",
-                "from_station": "Hangzhoudong",
-                "to_station": "2026年01月17日",
-                "depart_time": null,
-                "seat_type": null
+                "from_station": "杭州东站",
+                "to_station": "延平站",
+                "depart_time": "2026-01-17 10:23:00",
+                "seat_type": "二等座"
               }
             },
             "source": {
@@ -5368,7 +5368,7 @@
                 "from_station": null,
                 "to_station": null,
                 "depart_time": null,
-                "seat_type": null
+                "seat_type": "二等座"
               }
             },
             "source": {
@@ -5432,10 +5432,10 @@
                 "passenger_name": "测试人员013",
                 "id_no_masked": "110000********0001",
                 "train_no": "G1526",
-                "from_station": "Huaihuanan",
-                "to_station": "2026年01月25日",
-                "depart_time": null,
-                "seat_type": null
+                "from_station": "怀化南站",
+                "to_station": "武汉站",
+                "depart_time": "2026-01-25 20:35:00",
+                "seat_type": "二等座"
               }
             },
             "source": {
@@ -5815,7 +5815,7 @@
                 "from_station": null,
                 "to_station": null,
                 "depart_time": null,
-                "seat_type": null
+                "seat_type": "二等座"
               }
             },
             "source": {
@@ -5879,10 +5879,10 @@
                 "passenger_name": "测试人员013",
                 "id_no_masked": "110000********0001",
                 "train_no": "D3205",
-                "from_station": "Shanghaihongqiao",
-                "to_station": "2026年01月05日",
-                "depart_time": null,
-                "seat_type": null
+                "from_station": "上海虹桥站",
+                "to_station": "绍兴北站",
+                "depart_time": "2026-01-05 09:34:00",
+                "seat_type": "一等座"
               }
             },
             "source": {
@@ -6252,7 +6252,7 @@
                 "from_station": null,
                 "to_station": null,
                 "depart_time": null,
-                "seat_type": null
+                "seat_type": "一等座"
               }
             },
             "source": {
@@ -6296,7 +6296,7 @@
             "items": [
               {
                 "name": "铁路电子客票",
-                "spec": null,
+                "spec": "G1660",
                 "unit": "张",
                 "quantity": "1.00",
                 "unit_price": "285.38",
@@ -6315,11 +6315,11 @@
               "rail_12306": {
                 "passenger_name": "测试人员013",
                 "id_no_masked": "110000********0001",
-                "train_no": null,
-                "from_station": null,
-                "to_station": null,
-                "depart_time": null,
-                "seat_type": null
+                "train_no": "G1660",
+                "from_station": "延平站",
+                "to_station": "上海虹桥站",
+                "depart_time": "2026-01-14 19:32:00",
+                "seat_type": "一等座"
               }
             },
             "source": {
@@ -6659,7 +6659,7 @@
                 "from_station": null,
                 "to_station": null,
                 "depart_time": null,
-                "seat_type": null
+                "seat_type": "一等座"
               }
             },
             "source": {
@@ -8564,10 +8564,10 @@
                 "passenger_name": "测试人员013",
                 "id_no_masked": "110000********0001",
                 "train_no": "G1655",
-                "from_station": "Shanghainan",
-                "to_station": "2026年01月17日",
-                "depart_time": null,
-                "seat_type": null
+                "from_station": "上海南站",
+                "to_station": "延平站",
+                "depart_time": "2026-01-17 09:21:00",
+                "seat_type": "一等座"
               }
             },
             "source": {
@@ -8937,7 +8937,7 @@
                 "from_station": null,
                 "to_station": null,
                 "depart_time": null,
-                "seat_type": null
+                "seat_type": "一等座"
               }
             },
             "source": {

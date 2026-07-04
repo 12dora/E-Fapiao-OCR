@@ -9,7 +9,8 @@
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
+from datetime import datetime
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
 from app import __version__
@@ -101,22 +102,25 @@ def _money(v: Any) -> str | None:
         return None
     try:
         cleaned = str(v).replace(",", "").replace("¥", "").replace("￥", "").strip()
-        return str(Decimal(cleaned).quantize(Decimal("0.01")))
+        amount = Decimal(cleaned)
     except (InvalidOperation, ValueError):
         return None
+    # 拒绝 NaN / Infinity —— quantize 不会对 NaN 报错，会原样返回 "NaN"。
+    if not amount.is_finite():
+        return None
+    return str(amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
 def _normalize_date(v: Any) -> str | None:
     s = _str_or_none(v)
     if not s:
         return None
-    # 已经是 YYYY-MM-DD
+    # 仅接受已经是 YYYY-MM-DD 的字符串，且必须是真实存在的日历日期
+    # （拒绝 0000-00-00 / 2024-13-99 / 2024-02-30 等占位或非法值）。
     if len(s) == 10 and s[4] == "-" and s[7] == "-":
         try:
-            int(s[:4])
-            int(s[5:7])
-            int(s[8:10])
-            return s
+            datetime.strptime(s, "%Y-%m-%d")
         except ValueError:
             return None
+        return s
     return None

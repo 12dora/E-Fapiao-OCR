@@ -9,9 +9,10 @@ from collections.abc import Iterable, Mapping
 from io import BytesIO
 from typing import Any
 
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 from app.config import settings
+from app.errors import ParseFailed
 from app.ocr.base import OcrResult, OcrTextLine
 from app.ocr_model_profiles import bundled_model_root
 
@@ -21,7 +22,7 @@ class CnOcrVendor:
 
     def __init__(self) -> None:
         try:
-            from cnocr import CnOcr  # type: ignore[import-not-found]
+            from cnocr import CnOcr  # type: ignore[import-not-found, import-untyped]
         except ImportError as e:
             raise NotImplementedError(
                 'CnOCR 未安装，请先安装可选依赖: pip install "e-fapiao-ocr[ocr-cnocr]"'
@@ -48,9 +49,14 @@ class CnOcrVendor:
         self.model_root = str(bundled_root) if bundled_root else None
 
     def recognize(self, content: bytes) -> OcrResult:
-        with Image.open(BytesIO(content)) as image:
-            image = image.convert("RGB")
-            results = self._ocr.ocr(image)
+        # 上游仅按 magic bytes 判定格式，损坏/截断的图片会在真正解码或推理时才报错；
+        # 统一归类为 ParseFailed（422），与 http/tencent vendor 行为一致，避免裸 500。
+        try:
+            with Image.open(BytesIO(content)) as image:
+                rgb = image.convert("RGB")
+                results = self._ocr.ocr(rgb)
+        except (UnidentifiedImageError, OSError, ValueError, RuntimeError) as e:
+            raise ParseFailed("图片无法解码或 OCR 识别失败") from e
 
         lines = [_to_text_line(item) for item in results]
         return OcrResult(lines=[line for line in lines if line.text], vendor=self.name)

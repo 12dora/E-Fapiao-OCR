@@ -649,9 +649,9 @@ def apply_tail_layout_party_fallback(
     buyer["tax_id"] = buyer.get("tax_id") or m.group("buyer_tax")
     seller["name"] = m.group("seller_name")
     seller["tax_id"] = m.group("seller_tax")
-    buyer_name = _tail_layout_buyer_name(lines)
-    if buyer_name:
-        buyer["name"] = buyer_name
+    tail_buyer_name = _tail_layout_buyer_name(lines)
+    if tail_buyer_name:
+        buyer["name"] = tail_buyer_name
 
 
 def _tail_layout_buyer_name(lines: list[str]) -> str | None:

@@ -55,6 +55,12 @@ def _resolve_host(host: str) -> list[ipaddress.IPv4Address | ipaddress.IPv6Addre
 
 
 def _is_blocked_ip(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    # 先把 IPv4-mapped/兼容形式的 IPv6（如 ::ffff:169.254.169.254）还原为 IPv4，
+    # 否则旧版解释器可能不会把它们判定为内网/链路本地，从而绕过拦截。
+    if isinstance(address, ipaddress.IPv6Address):
+        mapped = address.ipv4_mapped or getattr(address, "sixtofour", None)
+        if mapped is not None:
+            address = mapped
     return (
         address.is_private
         or address.is_loopback

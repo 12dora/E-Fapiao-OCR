@@ -17,6 +17,10 @@ from app.extractors import air_itinerary
 from app.ocr import create_ocr_vendor
 from app.parsers.base import Parser
 
+# 反解压炸弹上限：OFD 是 ZIP 容器，几 MB 的压缩包可膨胀到 GB 级。
+_MAX_OFD_MEMBER_BYTES = 32 * 1024 * 1024
+_MAX_OFD_TOTAL_BYTES = 64 * 1024 * 1024
+
 
 class OfdParser(Parser):
     def parse(self, content: bytes, *, ocr_mode: str = "auto") -> dict[str, Any]:
@@ -47,34 +51,91 @@ class _OfdPackage:
         self.images: list[bytes] = []
 
 
+class _SizeBudget:
+    def __init__(self, total: int) -> None:
+        self._remaining = total
+
+    def remaining(self) -> int:
+        return self._remaining
+
+    def spend(self, amount: int) -> None:
+        self._remaining -= amount
+
+
+def _read_member(zf: zipfile.ZipFile, name: str, budget: _SizeBudget) -> bytes | None:
+    """流式读取 ZIP 成员，累计超过预算即中止返回 None。
+
+    不信任 ZipInfo.file_size（来自可被篡改的中央目录），而是边解压边计数，
+    从根本上杜绝解压炸弹。
+    """
+    cap = min(_MAX_OFD_MEMBER_BYTES, budget.remaining())
+    if cap <= 0:
+        return None
+    out = bytearray()
+    try:
+        with zf.open(name) as handle:
+            while True:
+                chunk = handle.read(65536)
+                if not chunk:
+                    break
+                out.extend(chunk)
+                if len(out) > cap:
+                    return None
+    except (zipfile.BadZipFile, OSError, EOFError):
+        return None
+    budget.spend(len(out))
+    return bytes(out)
+
+
 def _extract_ofd_package(content: bytes) -> _OfdPackage:
     try:
         with zipfile.ZipFile(BytesIO(content)) as zf:
             package = _OfdPackage()
+            budget = _SizeBudget(_MAX_OFD_TOTAL_BYTES)
             for name in zf.namelist():
                 lower = name.lower()
                 if lower.endswith((".png", ".jpg", ".jpeg")):
-                    package.images.append(zf.read(name))
+                    data = _read_member(zf, name, budget)
+                    if data is not None:
+                        package.images.append(data)
                     continue
                 if not lower.endswith(".xml"):
                     continue
                 if "/attachs/atr_" in lower:
-                    _merge_xml_text(package.fields, zf.read(name))
-                    continue
-                if lower.endswith("/pages/page_0/content.xml"):
-                    package.page_text.extend(_extract_text_codes(zf.read(name)))
-                    continue
-                if "/tpls/" in lower and lower.endswith("/content.xml"):
-                    package.template_text.extend(_extract_text_codes(zf.read(name)))
+                    data = _read_member(zf, name, budget)
+                    if data is not None:
+                        _merge_xml_text(package.fields, data)
+                elif lower.endswith("/pages/page_0/content.xml"):
+                    data = _read_member(zf, name, budget)
+                    if data is not None:
+                        package.page_text.extend(_extract_text_codes(data))
+                elif "/tpls/" in lower and lower.endswith("/content.xml"):
+                    data = _read_member(zf, name, budget)
+                    if data is not None:
+                        package.template_text.extend(_extract_text_codes(data))
             return package
     except zipfile.BadZipFile as e:
         raise ParseFailed("OFD 文件不是合法 ZIP 容器") from e
 
 
-def _merge_xml_text(fields: dict[str, str], data: bytes) -> None:
+def _safe_xml_fromstring(data: bytes) -> ET.Element | None:
+    """解析 XML，但拒绝带 DTD/实体声明的文档。
+
+    规避 billion-laughs 实体膨胀 DoS，且不依赖运行时 expat 的版本行为。
+    合法 OFD 内部 XML 不含 DOCTYPE/ENTITY。
+    """
+    prolog = data[:8192]
+    if b"<!DOCTYPE" in prolog or b"<!ENTITY" in prolog:
+        return None
     try:
-        root = ET.fromstring(data)
+        return ET.fromstring(data)
     except ET.ParseError:
+        return None
+
+
+def _merge_xml_text(fields: dict[str, str], data: bytes) -> None:
+    root = _safe_xml_fromstring(data)
+    if root is None:
         return
     for element in root.iter():
         tag = element.tag.rsplit("}", 1)[-1]
@@ -84,9 +145,8 @@ def _merge_xml_text(fields: dict[str, str], data: bytes) -> None:
 
 
 def _extract_text_codes(data: bytes) -> list[tuple[float, float, str]]:
-    try:
-        root = ET.fromstring(data)
-    except ET.ParseError:
+    root = _safe_xml_fromstring(data)
+    if root is None:
         return []
 
     rows: list[tuple[float, float, str]] = []

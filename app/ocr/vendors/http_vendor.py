@@ -59,7 +59,11 @@ def _parse_headers(raw: str) -> dict[str, str]:
     return headers
 
 
-def _parse_payload(payload: dict[str, Any]) -> OcrResult:
+def _parse_payload(payload: Any) -> OcrResult:
+    # response.json() 只保证是合法 JSON，未必是对象；非对象直接归类为 parse_failed（422）。
+    if not isinstance(payload, dict):
+        raise ParseFailed("第三方 OCR 服务响应缺少 text 或 lines")
+
     if isinstance(payload.get("text"), str):
         lines = [OcrTextLine(text=line.strip()) for line in payload["text"].splitlines()]
         return OcrResult(lines=[line for line in lines if line.text], vendor="http")

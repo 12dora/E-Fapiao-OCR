@@ -17,10 +17,25 @@ INVOICE_NO = re.compile(r"发票号码[:：\s]*([0-9A-Za-z]+)")
 ISSUE_DATE = re.compile(r"开票日期[:：\s]*(\d{4})年(\d{1,2})月(\d{1,2})日")
 BUYER = re.compile(r"购买方名称[:：\s]*(.+?)\s+统一社会信用代码[:：\s]*([A-Z0-9]{15,20})")
 AMOUNT = re.compile(r"[¥￥]\s*([0-9]+(?:\.[0-9]{1,2})?)")
-TRIP = re.compile(r"^\s*(\S+)\s+([A-Z][0-9A-Z]{1,8})\s+(\S+)\s*$", re.MULTILINE)
-DEPART = re.compile(
-    r"(\d{4})年(\d{1,2})月(\d{1,2})日\s+(\d{1,2}):(\d{2})开.*?\s+([一二特商务动卧硬软无等座]+座)"
+# 权威的起止站来源是中文「起站 止站」整行（两个以「站」结尾的词，中间可能夹车次），
+# 而不是罗马拼音行或跨行拼凑——后者会把下一行的日期误当成到站。
+STATION_LINE = re.compile(
+    r"^[^\S\n]*([^\s]+站)[^\S\n]+(?:([A-Z][0-9A-Z]{1,8})[^\S\n]+)?([^\s]+站)[^\S\n]*$",
+    re.MULTILINE,
 )
+# 紧凑单行版式 "<起站> <车次> <止站>"（站名可能不带「站」字，车次在中间）。
+# 关键：分隔符用 [^\S\n] 而非 \s，绝不跨行，避免把下一行的日期误当成到站。
+TRIP_INLINE = re.compile(
+    r"^[^\S\n]*(\S+)[^\S\n]+([A-Z]\d{1,4}[A-Z]?)[^\S\n]+(\S+?)[^\S\n]*$", re.MULTILINE
+)
+# 单独成行的车次（G1655 / D3205 / K1234 等）。
+TRAIN_LINE = re.compile(r"^[^\S\n]*([A-Z]\d{1,4}[A-Z]?)[^\S\n]*$", re.MULTILINE)
+# 发车时间 "HH:MM开"。
+DEPART_TIME = re.compile(r"(\d{1,2}):(\d{2})开")
+# 发车日期：行首的 "YYYY年MM月DD日"（区别于带 "开票日期" 前缀的开票日期）。
+DEPART_DATE_LINE = re.compile(r"^[^\S\n]*(\d{4})年(\d{1,2})月(\d{1,2})日", re.MULTILINE)
+# 座位类型：含卧铺/无座等不以「座」结尾的种类（按最长优先排列）。
+SEAT = re.compile(r"(优选一等座|商务座|特等座|一等座|二等座|无座|高级软卧|软卧|硬卧|软座|硬座)")
 PASSENGER = re.compile(r"([0-9A-Z]{6,}\*{2,}[0-9A-Z]+)\s+([^\s]+)")
 TICKET_NO = re.compile(r"电子客票号[:：\s]*([0-9A-Za-z]+)")
 
@@ -108,20 +123,47 @@ def _extract_buyer(text: str) -> tuple[str | None, str | None]:
 
 
 def _extract_trip(text: str) -> tuple[str | None, str | None, str | None]:
-    for m in TRIP.finditer(text):
-        left, train_no, right = m.groups()
-        if "站" in left or "站" in right:
-            continue
-        return left, train_no, right
-    return None, None, None
+    from_station = train_no = to_station = None
+    m = STATION_LINE.search(text)
+    if m:
+        from_station = m.group(1)
+        to_station = m.group(3)
+        if m.group(2):
+            train_no = m.group(2)
+    else:
+        # 无中文「站」整行时，退回紧凑单行 "<起站> <车次> <止站>"（单行内，不跨行）。
+        mi = TRIP_INLINE.search(text)
+        if mi:
+            from_station, train_no, to_station = mi.group(1), mi.group(2), mi.group(3)
+    if train_no is None:
+        mt = TRAIN_LINE.search(text)
+        if mt:
+            train_no = mt.group(1)
+    return from_station, train_no, to_station
 
 
 def _extract_depart(text: str) -> tuple[str | None, str | None]:
-    m = DEPART.search(text)
-    if not m:
-        return None, None
-    y, mo, d, hour, minute, seat_type = m.groups()
-    depart_time = f"{y}-{int(mo):02d}-{int(d):02d} {int(hour):02d}:{minute}:00"
+    seat_match = SEAT.search(text)
+    seat_type = seat_match.group(1) if seat_match else None
+
+    time_match = DEPART_TIME.search(text)
+    if not time_match:
+        return None, seat_type
+
+    depart_date = None
+    for m in DEPART_DATE_LINE.finditer(text):
+        line_start = text.rfind("\n", 0, m.start()) + 1
+        newline = text.find("\n", m.start())
+        line = text[line_start : newline if newline >= 0 else len(text)]
+        if "开票日期" in line:  # 跳过开票日期行，只认发车日期
+            continue
+        y, mo, d = m.groups()
+        depart_date = f"{y}-{int(mo):02d}-{int(d):02d}"
+        break
+
+    if depart_date is None:
+        return None, seat_type
+    depart_time = f"{depart_date} {int(time_match.group(1)):02d}:{time_match.group(2)}:00"
     return depart_time, seat_type
 
 
